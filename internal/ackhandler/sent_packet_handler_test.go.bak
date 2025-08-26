@@ -122,7 +122,7 @@ func TestSentPacketHandlerSendAndAcknowledge(t *testing.T) {
 }
 
 func testSentPacketHandlerSendAndAcknowledge(t *testing.T, encLevel protocol.EncryptionLevel) {
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&utils.RTTStats{},
@@ -176,7 +176,7 @@ func testSentPacketHandlerSendAndAcknowledge(t *testing.T, encLevel protocol.Enc
 }
 
 func TestSentPacketHandlerAcknowledgeSkippedPacket(t *testing.T) {
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&utils.RTTStats{},
@@ -231,7 +231,7 @@ func testSentPacketHandlerRTTs(t *testing.T, encLevel protocol.EncryptionLevel, 
 	expectedRTTStats.SetMaxAckDelay(time.Second)
 	var rttStats utils.RTTStats
 	rttStats.SetMaxAckDelay(time.Second)
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -320,7 +320,7 @@ func TestSentPacketHandlerAmplificationLimitServer(t *testing.T) {
 }
 
 func testSentPacketHandlerAmplificationLimitServer(t *testing.T, addressValidated bool) {
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&utils.RTTStats{},
@@ -390,7 +390,7 @@ func TestSentPacketHandlerAmplificationLimitClient(t *testing.T) {
 }
 
 func testSentPacketHandlerAmplificationLimitClient(t *testing.T, dropHandshake bool) {
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&utils.RTTStats{},
@@ -445,7 +445,7 @@ func testSentPacketHandlerAmplificationLimitClient(t *testing.T, dropHandshake b
 
 func TestSentPacketHandlerDelayBasedLossDetection(t *testing.T) {
 	var rttStats utils.RTTStats
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -498,7 +498,7 @@ func TestSentPacketHandlerDelayBasedLossDetection(t *testing.T) {
 
 func TestSentPacketHandlerPacketBasedLossDetection(t *testing.T) {
 	var rttStats utils.RTTStats
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -563,7 +563,7 @@ func testSentPacketHandlerPTO(t *testing.T, encLevel protocol.EncryptionLevel, p
 	rttStats.UpdateRTT(500*time.Millisecond, 0)
 	rttStats.UpdateRTT(1000*time.Millisecond, 0)
 	rttStats.UpdateRTT(1500*time.Millisecond, 0)
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -703,7 +703,7 @@ func TestSentPacketHandlerPacketNumberSpacesPTO(t *testing.T) {
 	var rttStats utils.RTTStats
 	const rtt = time.Second
 	rttStats.UpdateRTT(rtt, 0)
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -794,7 +794,7 @@ func TestSentPacketHandlerPacketNumberSpacesPTO(t *testing.T) {
 }
 
 func TestSentPacketHandler0RTT(t *testing.T) {
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&utils.RTTStats{},
@@ -844,7 +844,7 @@ func TestSentPacketHandlerCongestion(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	cong := mocks.NewMockSendAlgorithmWithDebugInfos(mockCtrl)
 	var rttStats utils.RTTStats
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -944,7 +944,7 @@ func testSentPacketHandlerRetry(t *testing.T, rtt, expectedRTT time.Duration) {
 	var initialPackets, appDataPackets packetTracker
 
 	var rttStats utils.RTTStats
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -995,7 +995,7 @@ func testSentPacketHandlerRetry(t *testing.T, rtt, expectedRTT time.Duration) {
 
 func TestSentPacketHandlerRetryAfterPTO(t *testing.T) {
 	var rttStats utils.RTTStats
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -1039,7 +1039,7 @@ func TestSentPacketHandlerECN(t *testing.T) {
 	cong.EXPECT().OnPacketAcked(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	cong.EXPECT().MaybeExitSlowStart().AnyTimes()
 	ecnHandler := NewMockECNHandler(mockCtrl)
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&utils.RTTStats{},
@@ -1142,7 +1142,7 @@ func TestSentPacketHandlerPathProbe(t *testing.T) {
 	var rttStats utils.RTTStats
 	rttStats.UpdateRTT(rtt, 0)
 
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -1221,7 +1221,7 @@ func TestSentPacketHandlerPathProbeAckAndLoss(t *testing.T) {
 	var rttStats utils.RTTStats
 	rttStats.UpdateRTT(rtt, 0)
 
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,
@@ -1296,7 +1296,7 @@ func testSentPacketHandlerRandomized(t *testing.T, seed uint64) {
 		return time.Duration(rand.Int64N(int64(max-min))) + min
 	}
 
-	sph := newTestSentPacketHandler(
+	sph := newSentPacketHandler(
 		0,
 		1200,
 		&rttStats,

@@ -19,7 +19,9 @@ func NewAckHandler(
 	pers protocol.Perspective,
 	tracer *logging.ConnectionTracer,
 	logger utils.Logger,
+	congestionControlAlgorithm protocol.CongestionControlAlgorithm,
+	enableL4S bool,
 ) (SentPacketHandler, ReceivedPacketHandler) {
-	sph := newSentPacketHandler(initialPacketNumber, initialMaxDatagramSize, rttStats, connStats, clientAddressValidated, enableECN, pers, tracer, logger)
+	sph := newSentPacketHandler(initialPacketNumber, initialMaxDatagramSize, rttStats, connStats, clientAddressValidated, enableECN, pers, tracer, logger, congestionControlAlgorithm, enableL4S)
 	return sph, newReceivedPacketHandler(sph, logger)
 }

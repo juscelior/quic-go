@@ -105,6 +105,13 @@ type sentPacketHandler struct {
 	enableECN  bool
 	ecnTracker ecnHandler
 
+	// Congestion control configuration
+	congestionControlAlgorithm protocol.CongestionControlAlgorithm
+	enableL4S                  bool
+	
+	// ECN tracking for Prague L4S
+	lastECNCECount uint64
+
 	perspective protocol.Perspective
 
 	tracer *logging.ConnectionTracer
@@ -128,15 +135,31 @@ func newSentPacketHandler(
 	pers protocol.Perspective,
 	tracer *logging.ConnectionTracer,
 	logger utils.Logger,
+	congestionControlAlgorithm protocol.CongestionControlAlgorithm,
+	enableL4S bool,
 ) *sentPacketHandler {
-	congestion := congestion.NewCubicSender(
-		congestion.DefaultClock{},
-		rttStats,
-		connStats,
-		initialMaxDatagramSize,
-		true, // use Reno
-		tracer,
-	)
+	var cong congestion.SendAlgorithmWithDebugInfos
+	
+	switch congestionControlAlgorithm {
+	case protocol.CongestionControlPrague:
+		cong = congestion.NewPragueSender(
+			congestion.DefaultClock{},
+			rttStats,
+			connStats,
+			initialMaxDatagramSize,
+			enableL4S,
+			tracer,
+		)
+	default: // RFC9002
+		cong = congestion.NewCubicSender(
+			congestion.DefaultClock{},
+			rttStats,
+			connStats,
+			initialMaxDatagramSize,
+			true, // use Reno
+			tracer,
+		)
+	}
 
 	h := &sentPacketHandler{
 		peerCompletedAddressValidation: pers == protocol.PerspectiveServer,
@@ -146,16 +169,76 @@ func newSentPacketHandler(
 		appDataPackets:                 newPacketNumberSpace(0, true),
 		rttStats:                       rttStats,
 		connStats:                      connStats,
-		congestion:                     congestion,
+		congestion:                     cong,
+		congestionControlAlgorithm:     congestionControlAlgorithm,
+		enableL4S:                      enableL4S,
 		perspective:                    pers,
 		tracer:                         tracer,
 		logger:                         logger,
+	}
+	
+	// Log L4S state initialization
+	if tracer != nil && tracer.L4SStateChanged != nil {
+		algorithmName := "RFC9002"
+		if congestionControlAlgorithm == protocol.CongestionControlPrague {
+			algorithmName = "Prague"
+		}
+		tracer.L4SStateChanged(enableL4S, algorithmName)
 	}
 	if enableECN {
 		h.enableECN = true
 		h.ecnTracker = newECNTracker(logger, tracer)
 	}
 	return h
+}
+
+// createCongestionControlAlgorithm creates the appropriate congestion control algorithm
+func (h *sentPacketHandler) createCongestionControlAlgorithm(initialMaxDatagramSize protocol.ByteCount) congestion.SendAlgorithmWithDebugInfos {
+	switch h.congestionControlAlgorithm {
+	case protocol.CongestionControlPrague:
+		return congestion.NewPragueSender(
+			congestion.DefaultClock{},
+			h.rttStats,
+			h.connStats,
+			initialMaxDatagramSize,
+			h.enableL4S,
+			h.tracer,
+		)
+	default: // RFC9002
+		return congestion.NewCubicSender(
+			congestion.DefaultClock{},
+			h.rttStats,
+			h.connStats,
+			initialMaxDatagramSize,
+			true, // use Reno
+			h.tracer,
+		)
+	}
+}
+
+// calculateECNMarkedBytes calculates the number of ECN-marked bytes from ACK feedback
+func (h *sentPacketHandler) calculateECNMarkedBytes(ackedPackets []*packet, ecnceCount uint64) protocol.ByteCount {
+	// Calculate the difference in ECNCE count since last ACK
+	newlyMarkedPackets := ecnceCount - h.lastECNCECount
+	h.lastECNCECount = ecnceCount
+	
+	if newlyMarkedPackets == 0 {
+		return 0
+	}
+	
+	// For simplicity, estimate marked bytes as the average packet size * marked count
+	// In a more sophisticated implementation, we could track which specific packets were marked
+	var totalBytes protocol.ByteCount
+	if len(ackedPackets) > 0 {
+		for _, p := range ackedPackets {
+			totalBytes += p.Length
+		}
+		avgPacketSize := totalBytes / protocol.ByteCount(len(ackedPackets))
+		return avgPacketSize * protocol.ByteCount(newlyMarkedPackets)
+	}
+	
+	// Fallback to max datagram size if no acked packets
+	return protocol.ByteCount(newlyMarkedPackets) * h.congestion.GetCongestionWindow() / 10 // rough estimate
 }
 
 func (h *sentPacketHandler) removeFromBytesInFlight(p *packet) {
@@ -380,6 +463,19 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 	// Only inform the ECN tracker about new 1-RTT ACKs if the ACK increases the largest acked.
 	if encLevel == protocol.Encryption1RTT && h.ecnTracker != nil && largestAcked > pnSpace.largestAcked {
 		congested := h.ecnTracker.HandleNewlyAcked(ackedPackets, int64(ack.ECT0), int64(ack.ECT1), int64(ack.ECNCE))
+		
+		// For Prague with L4S, provide ECN feedback
+		if h.congestionControlAlgorithm == protocol.CongestionControlPrague && h.enableL4S {
+			// Calculate ECN-marked bytes from ECNCE count difference
+			ecnMarkedBytes := h.calculateECNMarkedBytes(ackedPackets, ack.ECNCE)
+			if ecnMarkedBytes > 0 {
+				// Call ECN feedback through interface if supported
+				if ecnAware, ok := h.congestion.(interface{ OnECNFeedback(protocol.ByteCount) }); ok {
+					ecnAware.OnECNFeedback(ecnMarkedBytes)
+				}
+			}
+		}
+		
 		if congested {
 			h.congestion.OnCongestionEvent(largestAcked, 0, priorInFlight)
 		}
@@ -824,7 +920,20 @@ func (h *sentPacketHandler) ECNMode(isShortHeaderPacket bool) protocol.ECN {
 	if !isShortHeaderPacket {
 		return protocol.ECNNon
 	}
-	return h.ecnTracker.Mode()
+	
+	baseMode := h.ecnTracker.Mode()
+	
+	// For L4S with Prague algorithm, use ECT(1) instead of ECT(0)
+	if h.enableL4S && h.congestionControlAlgorithm == protocol.CongestionControlPrague {
+		switch baseMode {
+		case protocol.ECT0:
+			return protocol.ECT1 // L4S uses ECT(1) marking
+		default:
+			return baseMode // Keep ECNNon, ECNUnsupported, etc. as-is
+		}
+	}
+	
+	return baseMode
 }
 
 func (h *sentPacketHandler) PeekPacketNumber(encLevel protocol.EncryptionLevel) (protocol.PacketNumber, protocol.PacketNumberLen) {
@@ -997,13 +1106,6 @@ func (h *sentPacketHandler) MigratedPath(now time.Time, initialMaxDatagramSize p
 	for p := range h.appDataPackets.history.PathProbes() {
 		h.appDataPackets.history.RemovePathProbe(p.PacketNumber)
 	}
-	h.congestion = congestion.NewCubicSender(
-		congestion.DefaultClock{},
-		h.rttStats,
-		h.connStats,
-		initialMaxDatagramSize,
-		true, // use Reno
-		h.tracer,
-	)
+	h.congestion = h.createCongestionControlAlgorithm(initialMaxDatagramSize)
 	h.setLossDetectionTimer(now)
 }

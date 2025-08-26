@@ -95,6 +95,22 @@ const (
 	CongestionStateApplicationLimited
 )
 
+// String returns a string representation of the congestion state
+func (s CongestionState) String() string {
+	switch s {
+	case CongestionStateSlowStart:
+		return "SlowStart"
+	case CongestionStateCongestionAvoidance:
+		return "CongestionAvoidance"
+	case CongestionStateRecovery:
+		return "Recovery"
+	case CongestionStateApplicationLimited:
+		return "ApplicationLimited"
+	default:
+		return "Unknown"
+	}
+}
+
 // ECNState is the state of the ECN state machine (see Appendix A.4 of RFC 9000)
 type ECNState uint8
 

@@ -38,6 +38,12 @@ type ConnectionTracer struct {
 	LossTimerCanceled                func()
 	ECNStateUpdated                  func(state ECNState, trigger ECNStateTrigger)
 	ChoseALPN                        func(protocol string)
+	
+	// L4S and Prague-specific logging
+	UpdatedPragueAlpha              func(alpha float64, markingFraction float64)
+	PragueECNFeedback               func(ecnMarkedBytes ByteCount, totalBytes ByteCount)
+	L4SStateChanged                 func(enabled bool, algorithm string)
+	
 	// Close is called when the connection is closed.
 	Close func()
 	Debug func(name, msg string)

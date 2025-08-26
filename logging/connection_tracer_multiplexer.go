@@ -218,6 +218,27 @@ func NewMultiplexedConnectionTracer(tracers ...*ConnectionTracer) *ConnectionTra
 				}
 			}
 		},
+		UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
+			for _, t := range tracers {
+				if t.UpdatedPragueAlpha != nil {
+					t.UpdatedPragueAlpha(alpha, markingFraction)
+				}
+			}
+		},
+		PragueECNFeedback: func(ecnMarkedBytes ByteCount, totalBytes ByteCount) {
+			for _, t := range tracers {
+				if t.PragueECNFeedback != nil {
+					t.PragueECNFeedback(ecnMarkedBytes, totalBytes)
+				}
+			}
+		},
+		L4SStateChanged: func(enabled bool, algorithm string) {
+			for _, t := range tracers {
+				if t.L4SStateChanged != nil {
+					t.L4SStateChanged(enabled, algorithm)
+				}
+			}
+		},
 		Close: func() {
 			for _, t := range tracers {
 				if t.Close != nil {
