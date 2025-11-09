@@ -15,12 +15,16 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/quic-go/qpack"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3/qlog"
+	"github.com/quic-go/quic-go/qlogwriter"
+	"github.com/quic-go/quic-go/quicvarint"
 
 	"github.com/stretchr/testify/require"
 )
@@ -132,19 +136,48 @@ func getTLSClientConfig() *tls.Config { return tlsClientConfig.Clone() }
 func newConnPair(t *testing.T) (client, server *quic.Conn) {
 	t.Helper()
 
+	return newConnPairWithRecorder(t, nil, nil)
+}
+
+type qlogTrace struct {
+	recorder qlogwriter.Recorder
+}
+
+func (t *qlogTrace) SupportsSchemas(schema string) bool { return true }
+
+func (t *qlogTrace) AddProducer() qlogwriter.Recorder {
+	return t.recorder
+}
+
+func newConnPairWithRecorder(t *testing.T, clientRecorder, serverRecorder qlogwriter.Recorder) (client, server *quic.Conn) {
+	t.Helper()
+
 	ln, err := quic.ListenEarly(
 		newUDPConnLocalhost(t),
 		getTLSConfig(),
 		&quic.Config{
 			InitialStreamReceiveWindow:     maxByteCount,
 			InitialConnectionReceiveWindow: maxByteCount,
+			Tracer: func(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+				return &qlogTrace{recorder: serverRecorder}
+			},
 		},
 	)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	cl, err := quic.DialEarly(ctx, newUDPConnLocalhost(t), ln.Addr(), getTLSClientConfig(), &quic.Config{})
+	cl, err := quic.DialEarly(
+		ctx,
+		newUDPConnLocalhost(t),
+		ln.Addr(),
+		getTLSClientConfig(),
+		&quic.Config{
+			Tracer: func(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+				return &qlogTrace{recorder: clientRecorder}
+			},
+		},
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { cl.CloseWithError(0, "") })
 
@@ -159,7 +192,7 @@ func newConnPair(t *testing.T) (client, server *quic.Conn) {
 	return cl, conn
 }
 
-func newConnPairWithDatagrams(t *testing.T) (client, server *quic.Conn) {
+func newConnPairWithDatagrams(t *testing.T, clientRecorder, serverRecorder qlogwriter.Recorder) (client, server *quic.Conn) {
 	t.Helper()
 
 	ln, err := quic.ListenEarly(
@@ -169,13 +202,27 @@ func newConnPairWithDatagrams(t *testing.T) (client, server *quic.Conn) {
 			InitialStreamReceiveWindow:     maxByteCount,
 			InitialConnectionReceiveWindow: maxByteCount,
 			EnableDatagrams:                true,
+			Tracer: func(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+				return &qlogTrace{recorder: serverRecorder}
+			},
 		},
 	)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	cl, err := quic.DialEarly(ctx, newUDPConnLocalhost(t), ln.Addr(), getTLSClientConfig(), &quic.Config{EnableDatagrams: true})
+	cl, err := quic.DialEarly(
+		ctx,
+		newUDPConnLocalhost(t),
+		ln.Addr(),
+		getTLSClientConfig(),
+		&quic.Config{
+			EnableDatagrams: true,
+			Tracer: func(ctx context.Context, isClient bool, connID quic.ConnectionID) qlogwriter.Trace {
+				return &qlogTrace{recorder: clientRecorder}
+			},
+		},
+	)
 	require.NoError(t, err)
 	t.Cleanup(func() { cl.CloseWithError(0, "") })
 
@@ -234,7 +281,7 @@ func encodeRequest(t *testing.T, req *http.Request) []byte {
 
 	var buf bytes.Buffer
 	rw := newRequestWriter()
-	require.NoError(t, rw.WriteRequestHeader(&buf, req, false))
+	require.NoError(t, rw.WriteRequestHeader(&buf, req, false, 0, nil))
 	if req.Body != nil {
 		body, err := io.ReadAll(req.Body)
 		require.NoError(t, err)
@@ -250,7 +297,7 @@ func decodeHeader(t *testing.T, r io.Reader) map[string][]string {
 	fields := make(map[string][]string)
 	decoder := qpack.NewDecoder(nil)
 
-	frame, err := (&frameParser{r: r}).ParseNext()
+	frame, err := (&frameParser{r: r}).ParseNext(nil)
 	require.NoError(t, err)
 	require.IsType(t, &headersFrame{}, frame)
 	headersFrame := frame.(*headersFrame)
@@ -263,4 +310,48 @@ func decodeHeader(t *testing.T, r io.Reader) map[string][]string {
 		fields[p.Name] = append(fields[p.Name], p.Value)
 	}
 	return fields
+}
+
+// filterQlogEventsForFrame filters the events for the given frame type,
+// for both FrameCreated and FrameParsed events.
+// It returns the events that match the given frame type.
+func filterQlogEventsForFrame(events []qlogwriter.Event, frame any) []qlogwriter.Event {
+	var filtered []qlogwriter.Event
+	for _, ev := range events {
+		switch e := ev.(type) {
+		case qlog.FrameCreated:
+			if reflect.TypeOf(e.Frame.Frame) == reflect.TypeOf(frame) {
+				filtered = append(filtered, ev)
+			}
+		case qlog.FrameParsed:
+			if reflect.TypeOf(e.Frame.Frame) == reflect.TypeOf(frame) {
+				filtered = append(filtered, ev)
+			}
+		}
+	}
+	return filtered
+}
+
+func expectedFrameLength(t *testing.T, frame any) (length, payloadLength int) {
+	t.Helper()
+
+	switch f := frame.(type) {
+	case *dataFrame:
+		return len(f.Append(nil)) + int(f.Length), int(f.Length)
+	case *headersFrame:
+		return len(f.Append(nil)) + int(f.Length), int(f.Length)
+	case *goAwayFrame:
+		return len(f.Append(nil)), quicvarint.Len(uint64(f.StreamID))
+	case *settingsFrame:
+		data := f.Append(nil)
+		r := bytes.NewReader(data)
+		_, err := quicvarint.Read(r) // type
+		require.NoError(t, err)
+		_, err = quicvarint.Read(r) // length
+		require.NoError(t, err)
+		return len(data), r.Len()
+	default:
+		t.Fatalf("unexpected frame type: %T", frame)
+	}
+	panic("unreachable")
 }

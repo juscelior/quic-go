@@ -3,7 +3,7 @@ package ackhandler
 import (
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlogwriter"
 )
 
 // NewAckHandler creates a new SentPacketHandler and a new ReceivedPacketHandler.
@@ -17,11 +17,12 @@ func NewAckHandler(
 	clientAddressValidated bool,
 	enableECN bool,
 	pers protocol.Perspective,
-	tracer *logging.ConnectionTracer,
+	qlogger qlogwriter.Recorder,
 	logger utils.Logger,
 	congestionControlAlgorithm protocol.CongestionControlAlgorithm,
 	enableL4S bool,
 ) (SentPacketHandler, ReceivedPacketHandler) {
-	sph := newSentPacketHandler(initialPacketNumber, initialMaxDatagramSize, rttStats, connStats, clientAddressValidated, enableECN, pers, tracer, logger, congestionControlAlgorithm, enableL4S)
+
+	sph := newSentPacketHandler(initialPacketNumber, initialMaxDatagramSize, rttStats, connStats, clientAddressValidated, enableECN, pers, qlogger, logger, congestionControlAlgorithm, enableL4S)
 	return sph, newReceivedPacketHandler(sph, logger)
 }
