@@ -14,7 +14,7 @@ import (
 	"github.com/quic-go/quic-go/internal/qerr"
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 	"github.com/quic-go/quic-go/qlog"
 	"github.com/quic-go/quic-go/qlogwriter"
 	"github.com/quic-go/quic-go/testutils/events"
@@ -32,7 +32,7 @@ func newTestSentPacketHandler(
 	clientAddressValidated bool,
 	enableECN bool,
 	pers protocol.Perspective,
-	tracer *logging.ConnectionTracer,
+	tracer *qlog.ConnectionTracer,
 	logger utils.Logger,
 ) *sentPacketHandler {
 	return newSentPacketHandler(

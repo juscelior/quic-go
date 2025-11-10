@@ -152,7 +152,6 @@ func newSentPacketHandler(
 			connStats,
 			initialMaxDatagramSize,
 			enableL4S,
-			qlogger,
 		)
 	default: // RFC9002
 		cong = congestion.NewCubicSender(
@@ -183,13 +182,7 @@ func newSentPacketHandler(
 	}
 
 	// Log L4S state initialization
-	if tracer != nil && tracer.L4SStateChanged != nil {
-		algorithmName := "RFC9002"
-		if congestionControlAlgorithm == protocol.CongestionControlPrague {
-			algorithmName = "Prague"
-		}
-		tracer.L4SStateChanged(enableL4S, algorithmName)
-	}
+	// Removed tracer logging
 	if enableECN {
 		h.enableECN = true
 		h.ecnTracker = newECNTracker(logger, qlogger)
@@ -207,7 +200,6 @@ func (h *sentPacketHandler) createCongestionControlAlgorithm(initialMaxDatagramS
 			h.connStats,
 			initialMaxDatagramSize,
 			h.enableL4S,
-			h.tracer,
 		)
 	default: // RFC9002
 		return congestion.NewCubicSender(
@@ -216,13 +208,13 @@ func (h *sentPacketHandler) createCongestionControlAlgorithm(initialMaxDatagramS
 			h.connStats,
 			initialMaxDatagramSize,
 			true, // use Reno
-			h.tracer,
+			nil,
 		)
 	}
 }
 
 // calculateECNMarkedBytes calculates the number of ECN-marked bytes from ACK feedback
-func (h *sentPacketHandler) calculateECNMarkedBytes(ackedPackets []*packet, ecnceCount uint64) protocol.ByteCount {
+func (h *sentPacketHandler) calculateECNMarkedBytes(ackedPackets []packetWithPacketNumber, ecnceCount uint64) protocol.ByteCount {
 	// Calculate the difference in ECNCE count since last ACK
 	newlyMarkedPackets := ecnceCount - h.lastECNCECount
 	h.lastECNCECount = ecnceCount

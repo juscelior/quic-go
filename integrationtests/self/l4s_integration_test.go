@@ -7,7 +7,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 
 	"github.com/stretchr/testify/require"
 )
@@ -75,8 +75,8 @@ func TestL4SPragueAlgorithm(t *testing.T) {
 	var ecnFeedbackReceived bool
 
 	// Create tracer to monitor Prague-specific events
-	tracer := func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
-		return &logging.ConnectionTracer{
+	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
+		return &qlog.ConnectionTracer{
 			UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
 				pragueUsed = true
 				t.Logf("Prague alpha updated: alpha=%f, markingFraction=%f", alpha, markingFraction)

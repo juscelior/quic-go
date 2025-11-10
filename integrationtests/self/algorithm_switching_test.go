@@ -7,7 +7,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 
 	"github.com/stretchr/testify/require"
 )
@@ -164,11 +164,11 @@ func TestAlgorithmBehaviorDifferences(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var congestionEvents []logging.CongestionState
+			var congestionEvents []qlog.CongestionState
 
-			tracer := func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
-				return &logging.ConnectionTracer{
-					UpdatedCongestionState: func(state logging.CongestionState) {
+			tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
+				return &qlog.ConnectionTracer{
+					UpdatedCongestionState: func(state qlog.CongestionState) {
 						congestionEvents = append(congestionEvents, state)
 						t.Logf("%s - Congestion state: %v", algorithmName(tt.algorithm), state)
 					},

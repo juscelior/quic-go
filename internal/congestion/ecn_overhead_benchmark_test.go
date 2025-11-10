@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 )
 
 // BenchmarkECNMarkingOverhead measures the overhead of ECN marking in L4S
@@ -124,10 +124,10 @@ func BenchmarkECNTracingOverhead(b *testing.B) {
 		return func(b *testing.B) {
 			b.ReportAllocs()
 			
-			var tracer *logging.ConnectionTracer
+			var tracer *qlog.ConnectionTracer
 			if withTracing {
 				var alphaUpdates, ecnEvents int
-				tracer = &logging.ConnectionTracer{
+				tracer = &qlog.ConnectionTracer{
 					UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
 						alphaUpdates++
 					},

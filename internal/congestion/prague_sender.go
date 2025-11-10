@@ -5,9 +5,9 @@ import (
 	"math"
 	"time"
 
+	"github.com/quic-go/quic-go/internal/monotime"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
-	"github.com/quic-go/quic-go/logging"
 )
 
 const (
@@ -56,8 +56,6 @@ type pragueSender struct {
 	// Infrastructure
 	pacer     *pacer
 	clock     Clock
-	tracer    *logging.ConnectionTracer
-	lastState logging.CongestionState
 }
 
 var (
@@ -72,7 +70,6 @@ func NewPragueSender(
 	connStats *utils.ConnectionStats,
 	initialMaxDatagramSize protocol.ByteCount,
 	l4sEnabled bool,
-	tracer *logging.ConnectionTracer,
 ) *pragueSender {
 	return newPragueSender(
 		clock,
@@ -80,7 +77,6 @@ func NewPragueSender(
 		connStats,
 		initialMaxDatagramSize,
 		l4sEnabled,
-		tracer,
 	)
 }
 
@@ -90,7 +86,6 @@ func newPragueSender(
 	connStats *utils.ConnectionStats,
 	initialMaxDatagramSize protocol.ByteCount,
 	l4sEnabled bool,
-	tracer *logging.ConnectionTracer,
 ) *pragueSender {
 	p := &pragueSender{
 		clock:                      clock,
@@ -98,7 +93,6 @@ func newPragueSender(
 		connStats:                  connStats,
 		maxDatagramSize:            initialMaxDatagramSize,
 		l4sEnabled:                 l4sEnabled,
-		tracer:                     tracer,
 		alpha:                      0.0,
 		alphaGain:                  pragueAlphaGain,
 		virtualRTTMin:              pragueVirtualRTTMin,
@@ -116,16 +110,16 @@ func newPragueSender(
 
 // SendAlgorithm interface implementation
 
-func (p *pragueSender) TimeUntilSend(bytesInFlight protocol.ByteCount) time.Time {
+func (p *pragueSender) TimeUntilSend(bytesInFlight protocol.ByteCount) monotime.Time {
 	return p.pacer.TimeUntilSend()
 }
 
-func (p *pragueSender) HasPacingBudget(now time.Time) bool {
+func (p *pragueSender) HasPacingBudget(now monotime.Time) bool {
 	return p.pacer.Budget(now) >= p.maxDatagramSize
 }
 
 func (p *pragueSender) OnPacketSent(
-	sentTime time.Time,
+	sentTime monotime.Time,
 	bytesInFlight protocol.ByteCount,
 	packetNumber protocol.PacketNumber,
 	bytes protocol.ByteCount,
@@ -141,7 +135,6 @@ func (p *pragueSender) OnPacketSent(
 		p.largestSentPacketNumber = packetNumber
 	}
 
-	p.maybeLogCongestionState(bytesInFlight)
 }
 
 func (p *pragueSender) CanSend(bytesInFlight protocol.ByteCount) bool {
@@ -159,7 +152,7 @@ func (p *pragueSender) OnPacketAcked(
 	number protocol.PacketNumber,
 	ackedBytes protocol.ByteCount,
 	priorInFlight protocol.ByteCount,
-	eventTime time.Time,
+	eventTime monotime.Time,
 ) {
 	if number > p.largestAckedPacketNumber {
 		p.largestAckedPacketNumber = number
@@ -248,9 +241,6 @@ func (p *pragueSender) OnECNFeedback(ecnMarkedBytes protocol.ByteCount) {
 	p.ecnMarkedBytes += ecnMarkedBytes
 
 	// Log ECN feedback for monitoring
-	if p.tracer != nil && p.tracer.PragueECNFeedback != nil {
-		p.tracer.PragueECNFeedback(ecnMarkedBytes, p.totalAckedBytes)
-	}
 
 	// Update alpha if we have sufficient data (one RTT worth)
 	if p.totalAckedBytes > 0 {
@@ -271,7 +261,6 @@ func (p *pragueSender) updateAlpha() {
 
 	// Calculate instantaneous marking fraction
 	markingFraction := float64(p.ecnMarkedBytes) / float64(p.totalAckedBytes)
-	previousAlpha := p.alpha
 
 	// Initialize alpha to 1.0 on first ECN feedback for maximum response
 	if p.alpha == 0.0 && markingFraction > 0.0 {
@@ -290,9 +279,6 @@ func (p *pragueSender) updateAlpha() {
 	}
 
 	// Log alpha updates for debugging and monitoring
-	if p.tracer != nil && p.tracer.UpdatedPragueAlpha != nil && p.alpha != previousAlpha {
-		p.tracer.UpdatedPragueAlpha(p.alpha, markingFraction)
-	}
 }
 
 // applyECNCongestionResponse applies Prague multiplicative decrease based on alpha
@@ -356,27 +342,8 @@ func (p *pragueSender) minCongestionWindow() protocol.ByteCount {
 func (p *pragueSender) BandwidthEstimate() Bandwidth {
 	srtt := p.getVirtualRTT()
 	if srtt == 0 {
-		return infBandwidth
+		return Bandwidth(0)
 	}
 	return BandwidthFromDelta(p.congestionWindow, srtt)
 }
 
-func (p *pragueSender) maybeLogCongestionState(bytesInFlight protocol.ByteCount) {
-	if p.tracer == nil || p.tracer.UpdatedCongestionState == nil {
-		return
-	}
-
-	var newState logging.CongestionState
-	if p.inRecovery {
-		newState = logging.CongestionStateRecovery
-	} else if p.inSlowStart {
-		newState = logging.CongestionStateSlowStart
-	} else {
-		newState = logging.CongestionStateCongestionAvoidance
-	}
-
-	if newState != p.lastState {
-		p.tracer.UpdatedCongestionState(newState)
-		p.lastState = newState
-	}
-}

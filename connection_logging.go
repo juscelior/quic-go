@@ -11,7 +11,7 @@ import (
 	"github.com/quic-go/quic-go/qlog"
 )
 
-// ConvertFrame converts a wire.Frame into a logging.Frame.
+// ConvertFrame converts a wire.Frame into a qlog.Frame.
 // This makes it possible for external packages to access the frames.
 // Furthermore, it removes the data slices from CRYPTO and STREAM frames.
 func toQlogFrame(frame wire.Frame) qlog.Frame {

@@ -6,14 +6,13 @@ import (
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
-	"github.com/quic-go/quic-go/logging"
 )
 
 // BenchmarkPragueAlgorithmCreation benchmarks Prague algorithm creation
 func BenchmarkPragueAlgorithmCreation(b *testing.B) {
 	b.ReportAllocs()
 	
-	clock := &mockClock{}
+	clock := DefaultClock{}
 	rttStats := &utils.RTTStats{}
 	connStats := &utils.ConnectionStats{}
 	
@@ -24,7 +23,6 @@ func BenchmarkPragueAlgorithmCreation(b *testing.B) {
 			connStats,
 			protocol.InitialPacketSize,
 			true, // L4S enabled
-			nil,  // no tracer
 		)
 		_ = sender
 	}
@@ -269,7 +267,7 @@ func BenchmarkPragueWithTracing(b *testing.B) {
 	var alphaUpdates int
 	var ecnEvents int
 	
-	tracer := &logging.ConnectionTracer{
+	tracer := &qlog.ConnectionTracer{
 		UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
 			alphaUpdates++
 		},
@@ -328,7 +326,7 @@ func createBenchmarkPragueSender() *pragueSender {
 }
 
 // Helper function to create a Prague sender with tracer for benchmarking
-func createBenchmarkPragueSenderWithTracer(tracer *logging.ConnectionTracer) *pragueSender {
+func createBenchmarkPragueSenderWithTracer(tracer *qlog.ConnectionTracer) *pragueSender {
 	clock := &mockClock{}
 	rttStats := &utils.RTTStats{}
 	connStats := &utils.ConnectionStats{}

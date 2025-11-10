@@ -36,7 +36,7 @@ type Logger interface {
 	Debugf(format string, args ...any)
 }
 
-// DefaultLogger is used by quic-go for logging.
+// DefaultLogger is used by quic-go for qlog.
 var DefaultLogger Logger
 
 type defaultLogger struct {

@@ -17,7 +17,7 @@ func TestAlgorithmIsolation(t *testing.T) {
 	
 	// Create both algorithm instances
 	rfc9002 := NewCubicSender(clock, rttStats, connStats, 1200, true, nil)
-	prague := NewPragueSender(clock, rttStats, connStats, 1200, true, nil)
+	prague := NewPragueSender(clock, rttStats, connStats, 1200, true)
 	
 	// Both should start in slow start
 	require.True(t, rfc9002.InSlowStart())
@@ -31,7 +31,7 @@ func TestAlgorithmIsolation(t *testing.T) {
 	require.InDelta(t, float64(rfc9002Cwnd), float64(pragueCwnd), float64(rfc9002Cwnd)*0.5)
 	
 	// Simulate different workloads on each algorithm
-	now := time.Now()
+	now := clock.Now()
 	
 	// RFC9002: simulate packet loss
 	rfc9002.OnPacketSent(now, 1200, 1, 1200, true)
@@ -65,12 +65,12 @@ func TestPragueL4SBehavior(t *testing.T) {
 	connStats := &utils.ConnectionStats{}
 	
 	// Prague with L4S enabled
-	pragueL4S := NewPragueSender(clock, rttStats, connStats, 1200, true, nil)
+	pragueL4S := NewPragueSender(clock, rttStats, connStats, 1200, true)
 	
 	// Prague without L4S (should behave more like classic)
-	pragueClassic := NewPragueSender(clock, rttStats, connStats, 1200, false, nil)
+	pragueClassic := NewPragueSender(clock, rttStats, connStats, 1200, false)
 	
-	now := time.Now()
+	now := clock.Now()
 	
 	// Both send packets
 	pragueL4S.OnPacketSent(now, 1200, 1, 1200, true)

@@ -44,19 +44,11 @@ config := &quic.Config{
 ```go
 import "log"
 
-tracer := &logging.ConnectionTracer{
-    UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
-        log.Printf("Alpha updated: %.6f, marking rate: %.4f%%", 
-                   alpha, markingFraction*100)
-    },
-    PragueECNFeedback: func(ecnMarkedBytes, totalBytes protocol.ByteCount) {
-        if totalBytes > 0 {
-            rate := float64(ecnMarkedBytes) / float64(totalBytes) * 100
-            log.Printf("ECN feedback: %d/%d bytes marked (%.2f%%)", 
-                       ecnMarkedBytes, totalBytes, rate)
-        }
-    },
-}
+// Note: Detailed Prague logging is not currently available in this version
+// The tracer interface was removed for performance reasons
+// Monitor congestion window changes instead:
+log.Printf("Current CWND: %d bytes", sender.GetCongestionWindow())
+log.Printf("In Slow Start: %t", sender.InSlowStart())
 ```
 
 **Step 2: Check ECN Support**
@@ -98,10 +90,11 @@ traceroute -e <target_ip>
 
 **Step 1: Monitor Alpha Evolution**
 ```go
-func monitorAlpha(alpha float64, markingFraction float64) {
-    if alpha > 0.1 {
-        log.Printf("HIGH ALPHA WARNING: %.4f (marking: %.2f%%)", 
-                   alpha, markingFraction*100)
+// Note: Direct alpha monitoring not available in current version
+// Monitor congestion window changes as proxy for alpha behavior
+func monitorCongestionWindow(cwnd protocol.ByteCount, inSlowStart bool) {
+    if !inSlowStart && cwnd < 10000 {
+        log.Printf("POTENTIAL HIGH CONGESTION: CWND = %d bytes", cwnd)
     }
 }
 ```
@@ -120,17 +113,25 @@ ping -i 0.1 -c 100 <target_ip> | grep -E "time=|rtt"
 
 **Step 3: Analyze ECN Marking Patterns**
 ```go
-// Add to your tracer
-var markingHistory []float64
+// Note: Direct ECN feedback monitoring not available
+// Use network-level tools to analyze ECN patterns
+// Monitor congestion window reductions as indication of ECN feedback
+var cwndHistory []protocol.ByteCount
 
-PragueECNFeedback: func(ecnMarkedBytes, totalBytes protocol.ByteCount) {
-    if totalBytes > 0 {
-        rate := float64(ecnMarkedBytes) / float64(totalBytes)
-        markingHistory = append(markingHistory, rate)
-        
-        // Check for excessive marking
-        if rate > 0.2 {
-            log.Printf("EXCESSIVE MARKING: %.2f%% - network overloaded", rate*100)
+func trackCongestionWindow(cwnd protocol.ByteCount) {
+    cwndHistory = append(cwndHistory, cwnd)
+    
+    // Check for frequent reductions (possible ECN feedback)
+    if len(cwndHistory) > 5 {
+        recent := cwndHistory[len(cwndHistory)-5:]
+        reductions := 0
+        for i := 1; i < len(recent); i++ {
+            if recent[i] < recent[i-1] {
+                reductions++
+            }
+        }
+        if reductions >= 3 {
+            log.Printf("FREQUENT CWND REDUCTIONS: Possible excessive ECN marking")
         }
     }
 }
@@ -243,26 +244,23 @@ cat /proc/net/dev
 
 **Step 1: Verify ECN Negotiation**
 ```go
-// Check if ECN is negotiated during handshake
-SentPacket: func(hdr *logging.Header, size protocol.ByteCount, ecn protocol.ECN, ack *logging.AckFrame, frames []logging.Frame) {
-    if ecn == protocol.ECT1 {
-        log.Printf("Sent L4S packet with ECT(1)")
-    }
+// Note: Direct packet-level ECN monitoring not available in current version
+// Use network capture tools instead (see Step 2 below)
+// Check if L4S is enabled in configuration
+if config.EnableL4S && config.CongestionControlAlgorithm == protocol.CongestionControlPrague {
+    log.Printf("L4S properly configured")
+} else {
+    log.Printf("L4S not properly configured")
 }
 ```
 
 **Step 2: Monitor ACK Frames**
 ```go
-// Check for ECN feedback in ACK frames
-ReceivedPacket: func(hdr *logging.Header, size protocol.ByteCount, ecn protocol.ECN, frames []logging.Frame) {
-    for _, frame := range frames {
-        if ackFrame, ok := frame.(*logging.AckFrame); ok {
-            if ackFrame.ECT0 > 0 || ackFrame.ECT1 > 0 || ackFrame.ECNCE > 0 {
-                log.Printf("Received ECN feedback: ECT0=%d, ECT1=%d, CE=%d", 
-                          ackFrame.ECT0, ackFrame.ECT1, ackFrame.ECNCE)
-            }
-        }
-    }
+// Note: Direct ACK frame monitoring not available
+// Use tcpdump to monitor ECN feedback at network level
+// Monitor congestion window changes for feedback indication
+func onCongestionEvent() {
+    log.Printf("Congestion event detected - possible ECN feedback received")
 }
 ```
 
@@ -289,30 +287,23 @@ tcpdump -i any -v -x "host <target_ip>" | grep -A 5 -B 5 "ECT"
 ### Enable Debug Logging
 
 ```go
-// Comprehensive Prague debugging
-tracer := &logging.ConnectionTracer{
-    UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
-        log.Printf("[PRAGUE] Alpha: %.6f, Marking: %.4f%%", alpha, markingFraction*100)
-    },
-    
-    PragueECNFeedback: func(ecnMarkedBytes, totalBytes protocol.ByteCount) {
-        if totalBytes > 0 {
-            rate := float64(ecnMarkedBytes) / float64(totalBytes)
-            log.Printf("[PRAGUE] ECN feedback: %d/%d bytes (%.2f%%)", 
-                      ecnMarkedBytes, totalBytes, rate*100)
-        }
-    },
-    
-    UpdatedCongestionWindow: func(cwnd protocol.ByteCount) {
-        log.Printf("[PRAGUE] CWND updated: %d bytes", cwnd)
-    },
-    
-    SentPacket: func(hdr *logging.Header, size protocol.ByteCount, ecn protocol.ECN, ack *logging.AckFrame, frames []logging.Frame) {
-        if ecn == protocol.ECT1 {
-            log.Printf("[PRAGUE] Sent L4S packet: ECT(1), size=%d", size)
-        }
-    },
+// Current Prague debugging (tracer removed for performance)
+// Monitor key metrics through congestion control interface
+import "log"
+
+func debugPragueState(sender SendAlgorithmWithDebugInfos) {
+    log.Printf("[PRAGUE] CWND: %d bytes", sender.GetCongestionWindow())
+    log.Printf("[PRAGUE] In Slow Start: %t", sender.InSlowStart())
+    log.Printf("[PRAGUE] In Recovery: %t", sender.InRecovery())
 }
+
+// Call periodically during connection
+ticker := time.NewTicker(1 * time.Second)
+go func() {
+    for range ticker.C {
+        debugPragueState(pragueSender)
+    }
+}()
 ```
 
 ### Network Testing Commands
@@ -358,7 +349,7 @@ import (
     
     "github.com/quic-go/quic-go"
     "github.com/quic-go/quic-go/internal/protocol"
-    "github.com/quic-go/quic-go/logging"
+    "github.com/quic-go/quic-go/qlog"
 )
 
 func validateL4SConfig() error {

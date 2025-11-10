@@ -58,9 +58,9 @@ type TokenStore interface {
 // when the server rejects a 0-RTT connection attempt.
 var Err0RTTRejected = errors.New("0-RTT rejected")
 
-// ConnectionTracingKey can be used to associate a [logging.ConnectionTracer] with a [Conn].
+// ConnectionTracingKey can be used to associate a [qlog.ConnectionTracer] with a [Conn].
 // It is set on the Conn.Context() context,
-// as well as on the context passed to logging.Tracer.NewConnectionTracer.
+// as well as on the context passed to qlog.Tracer.NewConnectionTracer.
 //
 // Deprecated: Applications can set their own tracing key using Transport.ConnContext.
 var ConnectionTracingKey = connTracingCtxKey{}

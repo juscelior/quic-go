@@ -10,7 +10,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +23,8 @@ func TestECNFeedbackIntegration(t *testing.T) {
 	var totalAckedBytes atomic.Int64
 
 	// Enhanced tracer to monitor ECN and ACK integration
-	tracer := func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
-		return &logging.ConnectionTracer{
+	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
+		return &qlog.ConnectionTracer{
 			PragueECNFeedback: func(marked, total protocol.ByteCount) {
 				ecnFeedbackCount.Add(1)
 				ecnMarkedBytes.Add(int64(marked))
@@ -32,10 +32,10 @@ func TestECNFeedbackIntegration(t *testing.T) {
 				t.Logf("ECN Feedback: marked=%d bytes, total=%d bytes, ratio=%.2f%%", 
 					marked, total, float64(marked)/float64(total)*100)
 			},
-			ReceivedShortHeaderPacket: func(hdr *logging.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, frames []logging.Frame) {
+			ReceivedShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, frames []qlog.Frame) {
 				// Count ACK frames in received packets
 				for _, frame := range frames {
-					if _, isAck := frame.(*logging.AckFrame); isAck {
+					if _, isAck := frame.(*qlog.AckFrame); isAck {
 						ackFrameCount.Add(1)
 					}
 				}
@@ -43,7 +43,7 @@ func TestECNFeedbackIntegration(t *testing.T) {
 					t.Logf("Received packet with ECN: %v, size: %d", ecn, size)
 				}
 			},
-			SentShortHeaderPacket: func(hdr *logging.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, ack *logging.AckFrame, frames []logging.Frame) {
+			SentShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, ack *qlog.AckFrame, frames []qlog.Frame) {
 				if ecn != protocol.ECNNon {
 					t.Logf("Sent packet with ECN: %v, size: %d", ecn, size)
 				}
@@ -173,14 +173,14 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 	var mu sync.Mutex
 	var packetLog []packetInfo
 
-	tracer := func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
+	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
 		perspective := "server"
-		if p == logging.PerspectiveClient {
+		if p == qlog.PerspectiveClient {
 			perspective = "client"
 		}
 		
-		return &logging.ConnectionTracer{
-			SentShortHeaderPacket: func(hdr *logging.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, ack *logging.AckFrame, frames []logging.Frame) {
+		return &qlog.ConnectionTracer{
+			SentShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, ack *qlog.AckFrame, frames []qlog.Frame) {
 				mu.Lock()
 				defer mu.Unlock()
 				
@@ -197,13 +197,13 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 					t.Logf("[%s] Sent ECT(1) packet: size=%d, hasAck=%t", perspective, size, hasAck)
 				}
 			},
-			ReceivedShortHeaderPacket: func(hdr *logging.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, frames []logging.Frame) {
+			ReceivedShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, frames []qlog.Frame) {
 				mu.Lock()
 				defer mu.Unlock()
 				
 				hasAck := false
 				for _, frame := range frames {
-					if _, isAck := frame.(*logging.AckFrame); isAck {
+					if _, isAck := frame.(*qlog.AckFrame); isAck {
 						hasAck = true
 						break
 					}
@@ -317,8 +317,8 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 func TestECNFeedbackWithoutL4S(t *testing.T) {
 	var ecnFeedbackCount atomic.Int64
 
-	tracer := func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
-		return &logging.ConnectionTracer{
+	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
+		return &qlog.ConnectionTracer{
 			PragueECNFeedback: func(marked, total protocol.ByteCount) {
 				ecnFeedbackCount.Add(1)
 				t.Logf("Unexpected ECN feedback: marked=%d, total=%d", marked, total)

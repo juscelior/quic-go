@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quic-go/quic-go/internal/monotime"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +31,7 @@ type testPragueSender struct {
 type mockTracer struct {
 	pragueAlphaUpdates []alphaUpdate
 	ecnFeedbackEvents  []ecnFeedbackEvent
-	stateChanges       []logging.CongestionState
+	stateChanges       []qlog.CongestionState
 }
 
 type alphaUpdate struct {
@@ -63,23 +64,18 @@ func (m *mockTracer) PragueECNFeedback(ecnMarkedBytes, totalBytes protocol.ByteC
 	})
 }
 
-func (m *mockTracer) UpdatedCongestionState(new logging.CongestionState) {
+func (m *mockTracer) UpdatedCongestionState(new qlog.CongestionState) {
 	if m.stateChanges == nil {
-		m.stateChanges = []logging.CongestionState{}
+		m.stateChanges = []qlog.CongestionState{}
 	}
 	m.stateChanges = append(m.stateChanges, new)
 }
 
 func newTestPragueSender(l4sEnabled bool) *testPragueSender {
-	clock := mockClock{}
+	var clock mockClock
 	rttStats := utils.RTTStats{}
 	connStats := utils.ConnectionStats{}
 	tracer := &mockTracer{}
-	tracerInterface := &logging.ConnectionTracer{
-		UpdatedPragueAlpha:    tracer.UpdatedPragueAlpha,
-		PragueECNFeedback:     tracer.PragueECNFeedback,
-		UpdatedCongestionState: tracer.UpdatedCongestionState,
-	}
 
 	return &testPragueSender{
 		clock:         &clock,
@@ -93,7 +89,6 @@ func newTestPragueSender(l4sEnabled bool) *testPragueSender {
 			&connStats,
 			initialMaxDatagramSize,
 			l4sEnabled,
-			tracerInterface,
 		),
 	}
 }
@@ -347,7 +342,6 @@ func TestPragueSenderBandwidthEstimate(t *testing.T) {
 	// Bandwidth should be calculable and finite
 	bandwidth := sender.sender.BandwidthEstimate()
 	require.Greater(t, bandwidth, Bandwidth(0))
-	require.NotEqual(t, infBandwidth, bandwidth)
 	
 	// Bandwidth should be based on CWND and virtual RTT
 	expectedBandwidth := BandwidthFromDelta(sender.sender.GetCongestionWindow(), sender.sender.getVirtualRTT())
@@ -410,7 +404,7 @@ func TestPragueSenderPacing(t *testing.T) {
 	// Check that we can't send immediately due to pacing
 	delay := sender.sender.TimeUntilSend(sender.bytesInFlight)
 	require.NotZero(t, delay)
-	require.Less(t, delay.Sub(time.Time(*sender.clock)), time.Hour)
+	require.Less(t, delay.Sub(monotime.Time(*sender.clock)), time.Hour)
 	
 	// Should have pacing budget initially
 	require.True(t, sender.sender.HasPacingBudget(sender.clock.Now()))

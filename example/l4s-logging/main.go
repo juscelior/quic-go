@@ -7,7 +7,7 @@ import (
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
-	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 )
 
 func main() {
@@ -15,13 +15,13 @@ func main() {
 
 	// Create Prague-specific logger
 	connectionID := "demo-conn"
-	pragueTracer := logging.CreatePragueConnectionTracer(connectionID, true)
+	pragueTracer := qlog.CreatePragueConnectionTracer(connectionID, true)
 	
 	// Configure L4S with Prague and logging
 	config := &quic.Config{
 		EnableL4S:                  true,
 		CongestionControlAlgorithm: protocol.CongestionControlPrague,
-		Tracer: func(ctx context.Context, p logging.Perspective, connID quic.ConnectionID) *logging.ConnectionTracer {
+		Tracer: func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
 			return pragueTracer
 		},
 		KeepAlivePeriod:           0, // Disable keep alive for this example
@@ -47,7 +47,7 @@ func main() {
 	fmt.Println("when using Prague congestion control with L4S enabled.")
 }
 
-func simulateLoggingEvents(tracer *logging.ConnectionTracer) {
+func simulateLoggingEvents(tracer *qlog.ConnectionTracer) {
 	if tracer == nil {
 		return
 	}
@@ -59,7 +59,7 @@ func simulateLoggingEvents(tracer *logging.ConnectionTracer) {
 	
 	// Simulate congestion state changes
 	if tracer.UpdatedCongestionState != nil {
-		tracer.UpdatedCongestionState(logging.CongestionStateSlowStart)
+		tracer.UpdatedCongestionState(qlog.CongestionStateSlowStart)
 	}
 	
 	// Simulate ECN feedback
@@ -74,7 +74,7 @@ func simulateLoggingEvents(tracer *logging.ConnectionTracer) {
 	
 	// Simulate congestion avoidance
 	if tracer.UpdatedCongestionState != nil {
-		tracer.UpdatedCongestionState(logging.CongestionStateCongestionAvoidance)
+		tracer.UpdatedCongestionState(qlog.CongestionStateCongestionAvoidance)
 	}
 	
 	// Simulate more ECN feedback with higher marking

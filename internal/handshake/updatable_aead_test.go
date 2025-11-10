@@ -244,7 +244,7 @@ func TestKeyUpdates(t *testing.T) {
 // func TestUpdatesKeysWhenReceivingPacketWithNextKeyPhase(t *testing.T) {
 // 	rttStats := utils.RTTStats{}
 // 	mockCtrl := gomock.NewController(t)
-// 	serverTracer := mocklogging.NewMockConnectionTracer(mockCtrl)
+// 	serverTracer := mockqlog.NewMockConnectionTracer(mockCtrl)
 
 // 	trafficSecret1 := make([]byte, 16)
 // 	trafficSecret2 := make([]byte, 16)
