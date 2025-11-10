@@ -15,9 +15,12 @@ example/
 ├── l4s-config/        # Exemplo de configuração L4S
 │   ├── README.md
 │   └── main.go
-└── l4s-logging/       # Exemplo de logging L4S
+└── l4s-echo/          # Exemplo L4S com métricas Prometheus
     ├── README.md
-    └── main.go
+    ├── server.go
+    ├── metrics.go
+    └── client/
+        └── client.go
 ```
 
 ## Guia Rápido
@@ -73,14 +76,22 @@ go run example/l4s-config/main.go -enable-l4s
 go run example/l4s-config/main.go -disable-l4s
 ```
 
-### 5. L4S Logging (`l4s-logging/`)
+### 5. L4S Echo com Métricas (`l4s-echo/`)
 
-**O que faz:** Exemplo de logging detalhado para L4S e Prague
+**O que faz:** Servidor e cliente L4S com métricas Prometheus completas
 
 ```bash
-# Logging completo L4S
-go run example/l4s-logging/main.go
+# Terminal 1: Servidor
+go run example/l4s-echo/server.go example/l4s-echo/metrics.go
+
+# Terminal 2: Cliente
+cd example/l4s-echo/client && go run client.go
 ```
+
+**Características:**
+- Métricas Prague completas (alpha, CWND, ECN feedback)
+- Flag `-enable-l4s` para controle de L4S
+- Push para Prometheus opcional
 
 ## Cenários de Uso
 
@@ -111,9 +122,6 @@ go run example/client/main.go https://localhost:6121/1000
 ### Debugging e Análise
 
 ```bash
-# Servidor com logging completo
-go run example/l4s-logging/main.go
-
 # Cliente com key logging para Wireshark
 go run example/client/main.go -keylog keys.log https://localhost:8443/1000
 ```
@@ -166,10 +174,10 @@ curl -k https://localhost:6121/1000
 **Solução:** Use o cliente quic-go ou browser
 
 ```bash
-# ❌ Não funciona
+# Nao funciona
 curl https://localhost:6121/1000
 
-# ✅ Funciona
+# Funciona
 go run example/client/main.go https://localhost:6121/1000
 ```
 
@@ -193,11 +201,11 @@ curl -k https://localhost:6121/1000
 **Solução:** Sempre use Prague com L4S
 
 ```bash
-# ❌ Incorreto
+# Incorreto
 config.EnableL4S = true
 config.CongestionControlAlgorithm = RFC9002
 
-# ✅ Correto  
+# Correto  
 config.EnableL4S = true
 config.CongestionControlAlgorithm = Prague
 ```
@@ -205,7 +213,6 @@ config.CongestionControlAlgorithm = Prague
 ## Links Relacionados
 
 - [L4S Configuration Examples](l4s-config/README.md)
-- [L4S Logging Examples](l4s-logging/README.md)
 - [L4S Troubleshooting Guide](../docs/l4s-troubleshooting.md)
 - [Prague Algorithm Tuning](../docs/prague-algorithm-tuning.md)
 
@@ -226,4 +233,4 @@ go run example/l4s-config/main.go -enable-l4s &
 go run example/client/main.go https://localhost:8443/1000
 ```
 
-Todos os exemplos são autocontidos e demonstram diferentes aspectos do QUIC e HTTP/3 com quic-go! 🚀
+Todos os exemplos são autocontidos e demonstram diferentes aspectos do QUIC e HTTP/3 com quic-go!

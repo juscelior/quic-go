@@ -117,7 +117,7 @@ func testEcho(conn *quic.Conn, payloadSize int) error {
 
 	throughput := float64(bytesWritten) / duration.Seconds() / (1024 * 1024) // MB/s
 
-	fmt.Printf("[CLIENT] ✓ Echo test completed in %.3fs (%.2f MB/s)\n",
+	fmt.Printf("[CLIENT] Echo test completed in %.3fs (%.2f MB/s)\n",
 		duration.Seconds(), throughput)
 
 	return nil

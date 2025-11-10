@@ -148,7 +148,7 @@ During execution, the client will display real-time metrics:
 ```
 [CLIENT] Connected to server
 [CLIENT] Testing with 1024 bytes payload
-[CLIENT] ✓ Echo test completed in 0.012s (0.08 MB/s)
+[CLIENT] Echo test completed in 0.012s (0.08 MB/s)
 [PERF] RTT: 12.5ms | Bytes Sent: 1024 | Packets Sent: 2
 [PERF] RTT: 11.8ms | Bytes Sent: 2048 | Packets Sent: 4
 ...
