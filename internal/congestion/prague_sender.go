@@ -54,8 +54,8 @@ type pragueSender struct {
 	initialMaxCongestionWindow protocol.ByteCount
 
 	// Infrastructure
-	pacer     *pacer
-	clock     Clock
+	pacer *pacer
+	clock Clock
 }
 
 var (
@@ -346,4 +346,3 @@ func (p *pragueSender) BandwidthEstimate() Bandwidth {
 	}
 	return BandwidthFromDelta(p.congestionWindow, srtt)
 }
-

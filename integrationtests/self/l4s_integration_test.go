@@ -59,7 +59,7 @@ func TestL4SBasicConnection(t *testing.T) {
 	// Receive on server side
 	serverStream, err := serverConn.AcceptStream(ctx)
 	require.NoError(t, err)
-	
+
 	receivedData := make([]byte, len(testData)+10) // Buffer with extra space
 	n, err := serverStream.Read(receivedData)
 	if err != nil && err.Error() != "EOF" {
@@ -71,25 +71,8 @@ func TestL4SBasicConnection(t *testing.T) {
 
 // TestL4SPragueAlgorithm tests that Prague algorithm is being used
 func TestL4SPragueAlgorithm(t *testing.T) {
-	var pragueUsed bool
-	var ecnFeedbackReceived bool
-
-	// Create tracer to monitor Prague-specific events
-	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
-		return &qlog.ConnectionTracer{
-			UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
-				pragueUsed = true
-				t.Logf("Prague alpha updated: alpha=%f, markingFraction=%f", alpha, markingFraction)
-			},
-			PragueECNFeedback: func(ecnMarkedBytes, totalBytes protocol.ByteCount) {
-				ecnFeedbackReceived = true
-				t.Logf("ECN feedback: marked=%d, total=%d", ecnMarkedBytes, totalBytes)
-			},
-			L4SStateChanged: func(enabled bool, algorithm string) {
-				t.Logf("L4S state changed: enabled=%t, algorithm=%s", enabled, algorithm)
-			},
-		}
-	}
+	// Create a simple tracer for logging
+	tracer := qlog.DefaultConnectionTracer
 
 	serverConfig := getQuicConfig(&quic.Config{
 		EnableL4S:                  true,
@@ -137,7 +120,7 @@ func TestL4SPragueAlgorithm(t *testing.T) {
 	// Receive on server side
 	serverStream, err := serverConn.AcceptStream(ctx)
 	require.NoError(t, err)
-	
+
 	totalReceived := 0
 	buffer := make([]byte, 1024)
 	for {
@@ -157,10 +140,6 @@ func TestL4SPragueAlgorithm(t *testing.T) {
 
 	require.GreaterOrEqual(t, totalReceived, totalSent-1000) // Allow for some variance
 	t.Logf("Data transfer: sent=%d, received=%d", totalSent, totalReceived)
-	
-	// Note: Prague events might not trigger in this simple test due to lack of congestion
-	// This is expected in a localhost test environment
-	t.Logf("Prague events - used: %t, ECN feedback: %t", pragueUsed, ecnFeedbackReceived)
 }
 
 // TestL4SConfigurationValidation tests L4S configuration validation
@@ -236,7 +215,7 @@ func TestL4SWithoutPrague(t *testing.T) {
 // TestPragueWithoutL4S tests that Prague can work without L4S
 func TestPragueWithoutL4S(t *testing.T) {
 	serverConfig := getQuicConfig(&quic.Config{
-		EnableL4S:                  false, // L4S disabled
+		EnableL4S:                  false,                            // L4S disabled
 		CongestionControlAlgorithm: protocol.CongestionControlPrague, // But Prague enabled
 	})
 
@@ -273,7 +252,7 @@ func TestPragueWithoutL4S(t *testing.T) {
 
 	serverStream, err := serverConn.AcceptStream(ctx)
 	require.NoError(t, err)
-	
+
 	receivedData := make([]byte, len(testData)+10)
 	n, err := serverStream.Read(receivedData)
 	if err != nil && err.Error() != "EOF" {

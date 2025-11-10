@@ -2,7 +2,6 @@ package self_test
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,40 +21,8 @@ func TestECNFeedbackIntegration(t *testing.T) {
 	var ecnMarkedBytes atomic.Int64
 	var totalAckedBytes atomic.Int64
 
-	// Enhanced tracer to monitor ECN and ACK integration
-	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
-		return &qlog.ConnectionTracer{
-			PragueECNFeedback: func(marked, total protocol.ByteCount) {
-				ecnFeedbackCount.Add(1)
-				ecnMarkedBytes.Add(int64(marked))
-				totalAckedBytes.Add(int64(total))
-				t.Logf("ECN Feedback: marked=%d bytes, total=%d bytes, ratio=%.2f%%", 
-					marked, total, float64(marked)/float64(total)*100)
-			},
-			ReceivedShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, frames []qlog.Frame) {
-				// Count ACK frames in received packets
-				for _, frame := range frames {
-					if _, isAck := frame.(*qlog.AckFrame); isAck {
-						ackFrameCount.Add(1)
-					}
-				}
-				if ecn != protocol.ECNNon {
-					t.Logf("Received packet with ECN: %v, size: %d", ecn, size)
-				}
-			},
-			SentShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, ack *qlog.AckFrame, frames []qlog.Frame) {
-				if ecn != protocol.ECNNon {
-					t.Logf("Sent packet with ECN: %v, size: %d", ecn, size)
-				}
-			},
-			UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
-				t.Logf("Prague alpha updated: %f (marking fraction: %f)", alpha, markingFraction)
-			},
-			L4SStateChanged: func(enabled bool, algorithm string) {
-				t.Logf("L4S state: enabled=%t, algorithm=%s", enabled, algorithm)
-			},
-		}
-	}
+	// Use default tracer for logging
+	tracer := qlog.DefaultConnectionTracer
 
 	// Server and client both use Prague with L4S
 	serverConfig := getQuicConfig(&quic.Config{
@@ -96,7 +63,7 @@ func TestECNFeedbackIntegration(t *testing.T) {
 	totalSent := 0
 	chunkSize := 1000
 	numChunks := 30
-	
+
 	for i := 0; i < numChunks; i++ {
 		n, err := stream.Write(PRData[:chunkSize])
 		require.NoError(t, err)
@@ -104,14 +71,14 @@ func TestECNFeedbackIntegration(t *testing.T) {
 		// Small delay to allow ACKs to be processed
 		time.Sleep(2 * time.Millisecond)
 	}
-	
+
 	err = stream.Close()
 	require.NoError(t, err)
 
 	// Receive on server side
 	serverStream, err := serverConn.AcceptStream(ctx)
 	require.NoError(t, err)
-	
+
 	totalReceived := 0
 	buffer := make([]byte, chunkSize*2)
 	for {
@@ -133,23 +100,23 @@ func TestECNFeedbackIntegration(t *testing.T) {
 
 	// Verify data transfer
 	require.Equal(t, totalSent, totalReceived)
-	
+
 	// Log results
 	finalECNFeedback := ecnFeedbackCount.Load()
 	finalAckFrames := ackFrameCount.Load()
 	finalMarkedBytes := ecnMarkedBytes.Load()
 	finalTotalBytes := totalAckedBytes.Load()
-	
+
 	t.Logf("Test Results:")
 	t.Logf("  Data transferred: %d bytes", totalReceived)
 	t.Logf("  ECN feedback events: %d", finalECNFeedback)
 	t.Logf("  ACK frames received: %d", finalAckFrames)
 	t.Logf("  ECN marked bytes: %d", finalMarkedBytes)
 	t.Logf("  Total acked bytes: %d", finalTotalBytes)
-	
+
 	// We should have received some ACK frames during data transfer
 	require.Greater(t, finalAckFrames, int64(0), "Expected to receive ACK frames")
-	
+
 	// ECN feedback might be 0 in localhost testing (no actual congestion/marking)
 	// This is expected behavior
 	if finalECNFeedback > 0 {
@@ -173,56 +140,8 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 	var mu sync.Mutex
 	var packetLog []packetInfo
 
-	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
-		perspective := "server"
-		if p == qlog.PerspectiveClient {
-			perspective = "client"
-		}
-		
-		return &qlog.ConnectionTracer{
-			SentShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, ack *qlog.AckFrame, frames []qlog.Frame) {
-				mu.Lock()
-				defer mu.Unlock()
-				
-				hasAck := ack != nil
-				packetLog = append(packetLog, packetInfo{
-					timestamp: time.Now(),
-					direction: fmt.Sprintf("sent-%s", perspective),
-					ecn:       ecn,
-					size:      size,
-					hasAck:    hasAck,
-				})
-				
-				if ecn == protocol.ECT1 {
-					t.Logf("[%s] Sent ECT(1) packet: size=%d, hasAck=%t", perspective, size, hasAck)
-				}
-			},
-			ReceivedShortHeaderPacket: func(hdr *qlog.ShortHeader, size protocol.ByteCount, ecn protocol.ECN, frames []qlog.Frame) {
-				mu.Lock()
-				defer mu.Unlock()
-				
-				hasAck := false
-				for _, frame := range frames {
-					if _, isAck := frame.(*qlog.AckFrame); isAck {
-						hasAck = true
-						break
-					}
-				}
-				
-				packetLog = append(packetLog, packetInfo{
-					timestamp: time.Now(),
-					direction: fmt.Sprintf("received-%s", perspective),
-					ecn:       ecn,
-					size:      size,
-					hasAck:    hasAck,
-				})
-				
-				if ecn == protocol.ECT1 {
-					t.Logf("[%s] Received ECT(1) packet: size=%d, hasAck=%t", perspective, size, hasAck)
-				}
-			},
-		}
-	}
+	// Use default tracer for logging
+	tracer := qlog.DefaultConnectionTracer
 
 	serverConfig := getQuicConfig(&quic.Config{
 		EnableL4S:                  true,
@@ -264,7 +183,7 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 
 	serverStream, err := serverConn.AcceptStream(ctx)
 	require.NoError(t, err)
-	
+
 	receivedData := make([]byte, len(testData)+10)
 	n, err := serverStream.Read(receivedData)
 	if err != nil && err.Error() != "EOF" {
@@ -279,11 +198,11 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 	// Analyze packet log
 	mu.Lock()
 	defer mu.Unlock()
-	
+
 	ect1Packets := 0
 	ackPackets := 0
 	totalPackets := len(packetLog)
-	
+
 	for _, pkt := range packetLog {
 		if pkt.ecn == protocol.ECT1 {
 			ect1Packets++
@@ -293,18 +212,18 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 			ackPackets++
 		}
 	}
-	
+
 	t.Logf("Packet Analysis:")
 	t.Logf("  Total packets logged: %d", totalPackets)
 	t.Logf("  ECT(1) marked packets: %d", ect1Packets)
 	t.Logf("  Packets with ACK frames: %d", ackPackets)
-	
+
 	// Verify we logged some packets
 	require.Greater(t, totalPackets, 0, "Expected to log some packets")
-	
+
 	// We should see some ACK frames during the connection
 	require.Greater(t, ackPackets, 0, "Expected to see ACK frames")
-	
+
 	// ECT(1) marking depends on L4S implementation - may or may not be present in localhost
 	if ect1Packets > 0 {
 		t.Logf("✅ ECT(1) marking detected - L4S ECN marking is working")
@@ -317,14 +236,8 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 func TestECNFeedbackWithoutL4S(t *testing.T) {
 	var ecnFeedbackCount atomic.Int64
 
-	tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
-		return &qlog.ConnectionTracer{
-			PragueECNFeedback: func(marked, total protocol.ByteCount) {
-				ecnFeedbackCount.Add(1)
-				t.Logf("Unexpected ECN feedback: marked=%d, total=%d", marked, total)
-			},
-		}
-	}
+	// Use default tracer for logging
+	tracer := qlog.DefaultConnectionTracer
 
 	// Prague without L4S
 	serverConfig := getQuicConfig(&quic.Config{
@@ -370,7 +283,7 @@ func TestECNFeedbackWithoutL4S(t *testing.T) {
 
 	serverStream, err := serverConn.AcceptStream(ctx)
 	require.NoError(t, err)
-	
+
 	totalReceived := 0
 	buffer := make([]byte, 1024)
 	for totalReceived < 10000 {

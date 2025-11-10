@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/quic-go/quic-go/internal/monotime"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
 )
@@ -43,20 +44,20 @@ func BenchmarkCongestionResponse(b *testing.B) {
 		sender := createBenchmarkPragueSender()
 		sender.alpha = 0.1
 		sender.congestionWindow = 50000
-		
+
 		for b.Loop() {
 			sender.applyECNCongestionResponse()
 			sender.congestionWindow = 50000 // Reset for next iteration
 		}
 	})
-	
+
 	b.Run("Prague-Loss-Response", func(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkPragueSender()
 		packetNumber := protocol.PacketNumber(100)
 		lostBytes := protocol.ByteCount(1200)
 		priorInFlight := protocol.ByteCount(10000)
-		
+
 		for b.Loop() {
 			sender.OnCongestionEvent(packetNumber, lostBytes, priorInFlight)
 			packetNumber++
@@ -66,14 +67,14 @@ func BenchmarkCongestionResponse(b *testing.B) {
 			sender.congestionWindow = 50000
 		}
 	})
-	
+
 	b.Run("RFC9002-Loss-Response", func(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkCubicSender()
 		packetNumber := protocol.PacketNumber(100)
 		lostBytes := protocol.ByteCount(1200)
 		priorInFlight := protocol.ByteCount(10000)
-		
+
 		for b.Loop() {
 			sender.OnCongestionEvent(packetNumber, lostBytes, priorInFlight)
 			packetNumber++
@@ -99,18 +100,18 @@ func BenchmarkBandwidthCalculation(b *testing.B) {
 				b.ReportAllocs()
 				sender := createBenchmarkPragueSender()
 				sender.rttStats.UpdateRTT(rtt, 0)
-				
+
 				for b.Loop() {
 					bw := sender.BandwidthEstimate()
 					_ = bw
 				}
 			})
-			
+
 			b.Run("RFC9002", func(b *testing.B) {
 				b.ReportAllocs()
 				sender := createBenchmarkCubicSender()
 				sender.rttStats.UpdateRTT(rtt, 0)
-				
+
 				for b.Loop() {
 					bw := sender.BandwidthEstimate()
 					_ = bw
@@ -127,11 +128,11 @@ func BenchmarkSlowStartPerformance(b *testing.B) {
 		sender := createBenchmarkPragueSender()
 		sender.inSlowStart = true
 		sender.congestionWindow = 2000 // Start small
-		
+
 		ackedBytes := protocol.ByteCount(1200)
 		priorInFlight := protocol.ByteCount(1000)
-		eventTime := time.Now()
-		
+		eventTime := monotime.Now()
+
 		for b.Loop() {
 			if !sender.inSlowStart {
 				// Reset for next iteration
@@ -141,17 +142,17 @@ func BenchmarkSlowStartPerformance(b *testing.B) {
 			sender.OnPacketAcked(protocol.PacketNumber(b.Elapsed()), ackedBytes, priorInFlight, eventTime)
 		}
 	})
-	
+
 	b.Run("RFC9002-SlowStart", func(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkCubicSender()
 		sender.congestionWindow = 2000 // Start small
 		sender.slowStartThreshold = protocol.MaxByteCount
-		
+
 		ackedBytes := protocol.ByteCount(1200)
 		priorInFlight := protocol.ByteCount(1000)
-		eventTime := time.Now()
-		
+		eventTime := monotime.Now()
+
 		for b.Loop() {
 			if !sender.InSlowStart() {
 				// Reset for next iteration
@@ -167,7 +168,7 @@ func BenchmarkSlowStartPerformance(b *testing.B) {
 func BenchmarkMemoryUsage(b *testing.B) {
 	b.Run("Prague-MemoryFootprint", func(b *testing.B) {
 		b.ReportAllocs()
-		
+
 		var senders []*pragueSender
 		for b.Loop() {
 			sender := createBenchmarkPragueSender()
@@ -178,10 +179,10 @@ func BenchmarkMemoryUsage(b *testing.B) {
 		}
 		_ = senders
 	})
-	
+
 	b.Run("RFC9002-MemoryFootprint", func(b *testing.B) {
 		b.ReportAllocs()
-		
+
 		var senders []*cubicSender
 		for b.Loop() {
 			sender := createBenchmarkCubicSender()
@@ -197,26 +198,26 @@ func BenchmarkMemoryUsage(b *testing.B) {
 // BenchmarkHighThroughputScenario simulates high throughput scenarios
 func BenchmarkHighThroughputScenario(b *testing.B) {
 	const packetsPerLoop = 100
-	
+
 	b.Run("Prague-HighThroughput", func(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkPragueSender()
 		sender.congestionWindow = 100000 // Large window
 		sender.l4sEnabled = true
-		
-		sentTime := time.Now()
+
+		sentTime := monotime.Now()
 		packetSize := protocol.ByteCount(1400)
-		
+
 		for b.Loop() {
 			for i := 0; i < packetsPerLoop; i++ {
 				packetNumber := protocol.PacketNumber(int64(b.Elapsed())*packetsPerLoop + int64(i))
-				
+
 				// Send packet
 				sender.OnPacketSent(sentTime, 50000, packetNumber, packetSize, true)
-				
+
 				// ACK packet
 				sender.OnPacketAcked(packetNumber, packetSize, 50000, sentTime.Add(10*time.Millisecond))
-				
+
 				// Occasional ECN feedback
 				if i%10 == 0 {
 					sender.OnECNFeedback(packetSize / 20) // 5% marking
@@ -224,22 +225,22 @@ func BenchmarkHighThroughputScenario(b *testing.B) {
 			}
 		}
 	})
-	
+
 	b.Run("RFC9002-HighThroughput", func(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkCubicSender()
 		sender.congestionWindow = 100000 // Large window
-		
-		sentTime := time.Now()
+
+		sentTime := monotime.Now()
 		packetSize := protocol.ByteCount(1400)
-		
+
 		for b.Loop() {
 			for i := 0; i < packetsPerLoop; i++ {
 				packetNumber := protocol.PacketNumber(int64(b.Elapsed())*packetsPerLoop + int64(i))
-				
+
 				// Send packet
 				sender.OnPacketSent(sentTime, 50000, packetNumber, packetSize, true)
-				
+
 				// ACK packet
 				sender.OnPacketAcked(packetNumber, packetSize, 50000, sentTime.Add(10*time.Millisecond))
 			}
@@ -299,25 +300,25 @@ func BenchmarkAlgorithmStates(b *testing.B) {
 				b.ReportAllocs()
 				sender := createBenchmarkPragueSender()
 				state.setupPrague(sender)
-				
+
 				ackedBytes := protocol.ByteCount(1200)
 				priorInFlight := protocol.ByteCount(25000)
-				eventTime := time.Now()
-				
+				eventTime := monotime.Now()
+
 				for b.Loop() {
 					sender.OnPacketAcked(protocol.PacketNumber(b.Elapsed()+200), ackedBytes, priorInFlight, eventTime)
 				}
 			})
-			
+
 			b.Run("RFC9002", func(b *testing.B) {
 				b.ReportAllocs()
 				sender := createBenchmarkCubicSender()
 				state.setupCubic(sender)
-				
+
 				ackedBytes := protocol.ByteCount(1200)
 				priorInFlight := protocol.ByteCount(25000)
-				eventTime := time.Now()
-				
+				eventTime := monotime.Now()
+
 				for b.Loop() {
 					sender.OnPacketAcked(protocol.PacketNumber(b.Elapsed()+200), ackedBytes, priorInFlight, eventTime)
 				}
@@ -333,19 +334,19 @@ func BenchmarkPrecisionComparison(b *testing.B) {
 		sender := createBenchmarkPragueSender()
 		sender.alpha = 0.123456789
 		sender.congestionWindow = 23456
-		
+
 		for b.Loop() {
 			// Test floating point operations in Prague
 			sender.applyECNCongestionResponse()
 			sender.congestionWindow = 23456 // Reset
 		}
 	})
-	
+
 	b.Run("RFC9002-IntegerMath", func(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkCubicSender()
 		sender.congestionWindow = 23456
-		
+
 		for b.Loop() {
 			// Test integer operations in RFC9002
 			packetNumber := protocol.PacketNumber(b.Elapsed() + 100)
@@ -359,15 +360,15 @@ func BenchmarkPrecisionComparison(b *testing.B) {
 // Helper functions for creating benchmark senders
 func benchmarkAlgorithmScenario(b *testing.B, algorithm string, cwnd protocol.ByteCount, rtt time.Duration, packetSize protocol.ByteCount) {
 	b.ReportAllocs()
-	
+
 	if algorithm == "prague" {
 		sender := createBenchmarkPragueSender()
 		sender.congestionWindow = cwnd
 		sender.rttStats.UpdateRTT(rtt, 0)
-		
+
 		priorInFlight := cwnd / 2
-		eventTime := time.Now()
-		
+		eventTime := monotime.Now()
+
 		for b.Loop() {
 			sender.OnPacketAcked(protocol.PacketNumber(b.Elapsed()), packetSize, priorInFlight, eventTime)
 		}
@@ -375,10 +376,10 @@ func benchmarkAlgorithmScenario(b *testing.B, algorithm string, cwnd protocol.By
 		sender := createBenchmarkCubicSender()
 		sender.congestionWindow = cwnd
 		sender.rttStats.UpdateRTT(rtt, 0)
-		
+
 		priorInFlight := cwnd / 2
-		eventTime := time.Now()
-		
+		eventTime := monotime.Now()
+
 		for b.Loop() {
 			sender.OnPacketAcked(protocol.PacketNumber(b.Elapsed()), packetSize, priorInFlight, eventTime)
 		}
@@ -386,25 +387,25 @@ func benchmarkAlgorithmScenario(b *testing.B, algorithm string, cwnd protocol.By
 }
 
 func createBenchmarkCubicSender() *cubicSender {
-	clock := &mockClock{}
+	clock := DefaultClock{}
 	rttStats := &utils.RTTStats{}
 	connStats := &utils.ConnectionStats{}
-	
+
 	rttStats.UpdateRTT(50*time.Millisecond, 0)
-	
+
 	sender := NewCubicSender(
 		clock,
 		rttStats,
 		connStats,
 		protocol.InitialPacketSize,
 		false, // not reno
-		nil,    // no tracer
+		nil,   // no tracer
 	)
-	
+
 	sender.congestionWindow = protocol.ByteCount(10000)
 	sender.largestSentPacketNumber = 50
 	sender.largestAckedPacketNumber = 45
-	
+
 	return sender
 }
 
@@ -414,34 +415,34 @@ func BenchmarkRealWorldMix(b *testing.B) {
 		b.ReportAllocs()
 		sender := createBenchmarkPragueSender()
 		sender.l4sEnabled = true
-		
+
 		benchmarkRealWorldPattern(b, "prague", sender, nil)
 	})
-	
+
 	b.Run("RFC9002-RealWorld", func(b *testing.B) {
 		b.ReportAllocs()
 		cubicSender := createBenchmarkCubicSender()
-		
+
 		benchmarkRealWorldPattern(b, "rfc9002", nil, cubicSender)
 	})
 }
 
 func benchmarkRealWorldPattern(b *testing.B, algorithm string, pragueSender *pragueSender, cubicSender *cubicSender) {
-	sentTime := time.Now()
+	sentTime := monotime.Now()
 	packetSize := protocol.ByteCount(1200)
-	
+
 	for b.Loop() {
 		iteration := b.Elapsed()
 		packetNumber := protocol.PacketNumber(iteration)
 		bytesInFlight := protocol.ByteCount(5000 + (iteration%10)*1000)
-		
+
 		// 1. Send packet (always)
 		if algorithm == "prague" {
 			pragueSender.OnPacketSent(sentTime, bytesInFlight, packetNumber, packetSize, true)
 		} else {
 			cubicSender.OnPacketSent(sentTime, bytesInFlight, packetNumber, packetSize, true)
 		}
-		
+
 		// 2. ACK packet (95% success rate)
 		if iteration%20 != 0 {
 			ackTime := sentTime.Add(time.Duration(20+iteration%30) * time.Millisecond)
@@ -451,13 +452,13 @@ func benchmarkRealWorldPattern(b *testing.B, algorithm string, pragueSender *pra
 				cubicSender.OnPacketAcked(packetNumber, packetSize, bytesInFlight, ackTime)
 			}
 		}
-		
+
 		// 3. ECN feedback (Prague only, 8% of packets)
 		if algorithm == "prague" && iteration%12 == 0 {
 			ecnMarked := packetSize / 25 // 4% marking rate
 			pragueSender.OnECNFeedback(ecnMarked)
 		}
-		
+
 		// 4. Loss event (0.5% of packets)
 		if iteration%200 == 0 {
 			if algorithm == "prague" {
@@ -466,7 +467,7 @@ func benchmarkRealWorldPattern(b *testing.B, algorithm string, pragueSender *pra
 				cubicSender.OnCongestionEvent(packetNumber, packetSize, bytesInFlight)
 			}
 		}
-		
+
 		// 5. RTT variation
 		if iteration%50 == 0 {
 			newRTT := time.Duration(40+iteration%40) * time.Millisecond

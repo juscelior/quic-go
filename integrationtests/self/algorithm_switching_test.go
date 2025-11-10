@@ -15,13 +15,13 @@ import (
 // TestPragueVsRFC9002AlgorithmSwitching tests that different congestion control algorithms work independently
 func TestPragueVsRFC9002AlgorithmSwitching(t *testing.T) {
 	tests := []struct {
-		name           string
-		serverAlg      protocol.CongestionControlAlgorithm
-		clientAlg      protocol.CongestionControlAlgorithm
-		serverL4S      bool
-		clientL4S      bool
-		shouldConnect  bool
-		description    string
+		name          string
+		serverAlg     protocol.CongestionControlAlgorithm
+		clientAlg     protocol.CongestionControlAlgorithm
+		serverL4S     bool
+		clientL4S     bool
+		shouldConnect bool
+		description   string
 	}{
 		{
 			name:          "Prague-Prague connection",
@@ -80,7 +80,7 @@ func TestPragueVsRFC9002AlgorithmSwitching(t *testing.T) {
 				EnableL4S:                  tt.serverL4S,
 			})
 
-			// Create client config  
+			// Create client config
 			clientConfig := getQuicConfig(&quic.Config{
 				CongestionControlAlgorithm: tt.clientAlg,
 				EnableL4S:                  tt.clientL4S,
@@ -122,7 +122,7 @@ func TestPragueVsRFC9002AlgorithmSwitching(t *testing.T) {
 			// Receive on server side
 			serverStream, err := serverConn.AcceptStream(ctx)
 			require.NoError(t, err)
-			
+
 			receivedData := make([]byte, len(testData)+10)
 			n, err := serverStream.Read(receivedData)
 			if err != nil && err.Error() != "EOF" {
@@ -131,7 +131,7 @@ func TestPragueVsRFC9002AlgorithmSwitching(t *testing.T) {
 			require.Equal(t, len(testData), n)
 			require.Equal(t, testData, receivedData[:n])
 
-			t.Logf("✅ Connection successful with %s server and %s client", 
+			t.Logf("✅ Connection successful with %s server and %s client",
 				algorithmName(tt.serverAlg), algorithmName(tt.clientAlg))
 		})
 	}
@@ -166,20 +166,8 @@ func TestAlgorithmBehaviorDifferences(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var congestionEvents []qlog.CongestionState
 
-			tracer := func(ctx context.Context, p qlog.Perspective, connID quic.ConnectionID) *qlog.ConnectionTracer {
-				return &qlog.ConnectionTracer{
-					UpdatedCongestionState: func(state qlog.CongestionState) {
-						congestionEvents = append(congestionEvents, state)
-						t.Logf("%s - Congestion state: %v", algorithmName(tt.algorithm), state)
-					},
-					UpdatedPragueAlpha: func(alpha float64, markingFraction float64) {
-						t.Logf("Prague - Alpha updated: %f (marking: %f)", alpha, markingFraction)
-					},
-					L4SStateChanged: func(enabled bool, algorithm string) {
-						t.Logf("L4S state changed: enabled=%t, algorithm=%s", enabled, algorithm)
-					},
-				}
-			}
+			// Use default tracer for logging
+			tracer := qlog.DefaultConnectionTracer
 
 			serverConfig := getQuicConfig(&quic.Config{
 				CongestionControlAlgorithm: tt.algorithm,
@@ -231,7 +219,7 @@ func TestAlgorithmBehaviorDifferences(t *testing.T) {
 			// Receive on server side
 			serverStream, err := serverConn.AcceptStream(ctx)
 			require.NoError(t, err)
-			
+
 			totalReceived := 0
 			buffer := make([]byte, 2048)
 			for {
@@ -248,9 +236,9 @@ func TestAlgorithmBehaviorDifferences(t *testing.T) {
 				}
 			}
 
-			t.Logf("%s - Data transfer complete: sent=%d, received=%d, congestion events=%d", 
+			t.Logf("%s - Data transfer complete: sent=%d, received=%d, congestion events=%d",
 				algorithmName(tt.algorithm), totalSent, totalReceived, len(congestionEvents))
-			
+
 			// Verify we received most of the data (allow some variance)
 			require.GreaterOrEqual(t, totalReceived, totalSent-4000)
 		})
