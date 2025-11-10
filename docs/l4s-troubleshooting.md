@@ -1,0 +1,462 @@
+# L4S Troubleshooting Guide
+
+## Overview
+
+This guide helps diagnose and resolve common issues when using L4S (Low Latency, Low Loss, Scalable Throughput) with Prague congestion control in quic-go.
+
+## Quick Diagnosis Checklist
+
+### Basic Configuration Check
+
+1. **Verify L4S is enabled correctly:**
+```go
+config := &quic.Config{
+    EnableL4S: true,
+    CongestionControlAlgorithm: protocol.CongestionControlPrague,
+}
+```
+
+2. **Check for configuration errors:**
+```bash
+# This should fail - L4S requires Prague
+config := &quic.Config{
+    EnableL4S: true,
+    CongestionControlAlgorithm: protocol.CongestionControlRFC9002,  // ERROR
+}
+```
+
+3. **Validate both endpoints support L4S:**
+   - Client and server must both use L4S configuration
+   - Check that Prague algorithm is selected
+
+## Common Issues and Solutions
+
+### Issue 1: L4S Not Working (No Performance Improvement)
+
+#### Symptoms
+- No latency improvement over RFC 9002
+- Alpha parameter always zero
+- No ECN markings observed
+
+#### Diagnosis Steps
+
+**Step 1: Enable Detailed Logging**
+```go
+import "log"
+
+// Note: Detailed Prague logging is not currently available in this version
+// The tracer interface was removed for performance reasons
+// Monitor congestion window changes instead:
+log.Printf("Current CWND: %d bytes", sender.GetCongestionWindow())
+log.Printf("In Slow Start: %t", sender.InSlowStart())
+```
+
+**Step 2: Check ECN Support**
+```bash
+# Capture packets to verify ECN markings
+sudo tcpdump -i any -v "udp and host <target_ip>" | grep -E "(ECT|CE)"
+
+# Look for:
+# - ECT(1) in outgoing packets (Prague marking)
+# - CE markings in incoming packets (congestion signals)
+```
+
+**Step 3: Verify Network Infrastructure**
+```bash
+# Test basic ECN capability
+ping -Q 1 <target_ip>  # Send ECT(1) marked pings
+
+# Check if network strips ECN bits
+traceroute -e <target_ip>
+```
+
+#### Common Causes and Solutions
+
+| Cause | Solution |
+|-------|----------|
+| **Network doesn't support ECN** | Use classic network or deploy L4S-capable infrastructure |
+| **Middleboxes strip ECN bits** | Identify and configure middleboxes to preserve ECN |
+| **No congestion present** | Test under load or with artificial congestion |
+| **AQM not L4S-aware** | Configure L4S-capable AQM (FQ-CoDel, PIE, DualQ) |
+
+### Issue 2: High Latency Despite L4S
+
+#### Symptoms
+- Latency higher than expected
+- Alpha parameter consistently high (> 0.1)
+- Frequent congestion window reductions
+
+#### Diagnosis Steps
+
+**Step 1: Monitor Alpha Evolution**
+```go
+// Note: Direct alpha monitoring not available in current version
+// Monitor congestion window changes as proxy for alpha behavior
+func monitorCongestionWindow(cwnd protocol.ByteCount, inSlowStart bool) {
+    if !inSlowStart && cwnd < 10000 {
+        log.Printf("POTENTIAL HIGH CONGESTION: CWND = %d bytes", cwnd)
+    }
+}
+```
+
+**Step 2: Check Network Congestion**
+```bash
+# Monitor network utilization
+iftop -i <interface>
+
+# Check queue depths
+tc -s qdisc show dev <interface>
+
+# Monitor RTT variation
+ping -i 0.1 -c 100 <target_ip> | grep -E "time=|rtt"
+```
+
+**Step 3: Analyze ECN Marking Patterns**
+```go
+// Note: Direct ECN feedback monitoring not available
+// Use network-level tools to analyze ECN patterns
+// Monitor congestion window reductions as indication of ECN feedback
+var cwndHistory []protocol.ByteCount
+
+func trackCongestionWindow(cwnd protocol.ByteCount) {
+    cwndHistory = append(cwndHistory, cwnd)
+    
+    // Check for frequent reductions (possible ECN feedback)
+    if len(cwndHistory) > 5 {
+        recent := cwndHistory[len(cwndHistory)-5:]
+        reductions := 0
+        for i := 1; i < len(recent); i++ {
+            if recent[i] < recent[i-1] {
+                reductions++
+            }
+        }
+        if reductions >= 3 {
+            log.Printf("FREQUENT CWND REDUCTIONS: Possible excessive ECN marking")
+        }
+    }
+}
+```
+
+#### Solutions
+
+| Problem | Solution |
+|---------|----------|
+| **Network overloaded** | Reduce traffic or upgrade network capacity |
+| **AQM too aggressive** | Tune AQM parameters for lower marking threshold |
+| **Competing traffic** | Implement proper L4S/classic traffic isolation |
+| **Alpha gain too high** | Reduce `pragueAlphaGain` for more stable behavior |
+
+### Issue 3: Configuration Validation Failures
+
+#### Symptoms
+- Application crashes on startup
+- "L4S can only be enabled when using Prague" error
+- Invalid algorithm selection
+
+#### Common Configuration Errors
+
+**Error 1: Wrong Algorithm**
+```go
+// WRONG - This will fail validation
+config := &quic.Config{
+    EnableL4S: true,
+    CongestionControlAlgorithm: protocol.CongestionControlRFC9002,
+}
+
+// CORRECT
+config := &quic.Config{
+    EnableL4S: true,
+    CongestionControlAlgorithm: protocol.CongestionControlPrague,
+}
+```
+
+**Error 2: Missing Algorithm Specification**
+```go
+// WRONG - EnableL4S without specifying Prague
+config := &quic.Config{
+    EnableL4S: true,
+    // Missing: CongestionControlAlgorithm
+}
+
+// CORRECT
+config := &quic.Config{
+    EnableL4S: true,
+    CongestionControlAlgorithm: protocol.CongestionControlPrague,
+}
+```
+
+### Issue 4: Poor Performance vs RFC 9002
+
+#### Symptoms
+- Lower throughput than RFC 9002
+- Higher CPU usage
+- Memory allocation issues
+
+#### Performance Analysis
+
+**Step 1: Run Benchmarks**
+```bash
+# Compare algorithm performance
+go test -bench="Prague|RFC9002" -benchmem ./internal/congestion/
+
+# Check for performance regressions
+go test -bench=BenchmarkPragueVsCubic -benchmem ./internal/congestion/
+```
+
+**Step 2: Profile Your Application**
+```go
+import _ "net/http/pprof"
+import "net/http"
+
+// Add pprof endpoint
+go func() {
+    log.Println(http.ListenAndServe("localhost:6060", nil))
+}()
+
+// Profile with: go tool pprof http://localhost:6060/debug/pprof/profile
+```
+
+**Step 3: Monitor Resource Usage**
+```bash
+# Monitor CPU and memory
+top -p $(pgrep your_app)
+
+# Check network interface statistics
+cat /proc/net/dev
+```
+
+#### Optimization Tips
+
+| Issue | Solution |
+|-------|---------|
+| **High CPU usage** | Verify ECN processing efficiency, check for tight loops |
+| **Memory leaks** | Monitor alpha update frequency, check carry mechanism |
+| **Poor throughput** | Tune alpha gain, verify network supports L4S properly |
+
+### Issue 5: ECN Feedback Not Received
+
+#### Symptoms
+- Alpha always zero
+- No ECN feedback events in logs
+- Prague behaves like RFC 9002
+
+#### Diagnosis Steps
+
+**Step 1: Verify ECN Negotiation**
+```go
+// Note: Direct packet-level ECN monitoring not available in current version
+// Use network capture tools instead (see Step 2 below)
+// Check if L4S is enabled in configuration
+if config.EnableL4S && config.CongestionControlAlgorithm == protocol.CongestionControlPrague {
+    log.Printf("L4S properly configured")
+} else {
+    log.Printf("L4S not properly configured")
+}
+```
+
+**Step 2: Monitor ACK Frames**
+```go
+// Note: Direct ACK frame monitoring not available
+// Use tcpdump to monitor ECN feedback at network level
+// Monitor congestion window changes for feedback indication
+func onCongestionEvent() {
+    log.Printf("Congestion event detected - possible ECN feedback received")
+}
+```
+
+**Step 3: Network Path Analysis**
+```bash
+# Check if ECN bits are preserved
+# Send test packets with ECN markings
+hping3 -c 10 -i 1 -Q 1 <target_ip>
+
+# Monitor for ECN mangling
+tcpdump -i any -v -x "host <target_ip>" | grep -A 5 -B 5 "ECT"
+```
+
+#### Solutions
+
+| Problem | Fix |
+|---------|-----|
+| **ECN negotiation failed** | Ensure both endpoints support AccECN |
+| **Middlebox ECN stripping** | Identify and reconfigure network equipment |
+| **No congestion to mark** | Test with artificial load or queue delay |
+
+## Debugging Tools and Techniques
+
+### Enable Debug Logging
+
+```go
+// Current Prague debugging (tracer removed for performance)
+// Monitor key metrics through congestion control interface
+import "log"
+
+func debugPragueState(sender SendAlgorithmWithDebugInfos) {
+    log.Printf("[PRAGUE] CWND: %d bytes", sender.GetCongestionWindow())
+    log.Printf("[PRAGUE] In Slow Start: %t", sender.InSlowStart())
+    log.Printf("[PRAGUE] In Recovery: %t", sender.InRecovery())
+}
+
+// Call periodically during connection
+ticker := time.NewTicker(1 * time.Second)
+go func() {
+    for range ticker.C {
+        debugPragueState(pragueSender)
+    }
+}()
+```
+
+### Network Testing Commands
+
+```bash
+# Test ECN capability end-to-end
+nuttcp -xc -T1 -i1 <target_ip>
+
+# Monitor queue statistics
+tc -s qdisc show dev eth0
+
+# Check ECN support in kernel
+sysctl net.ipv4.tcp_ecn
+
+# Test with different ECN markings
+iperf3 -c <target_ip> --set-mss 1200 --pacing-timer 1000
+```
+
+### Performance Baseline Tests
+
+```bash
+# Test Prague performance
+go run example/l4s-config/main.go -enable-l4s -duration 30s
+
+# Compare with RFC 9002
+go run example/l4s-config/main.go -disable-l4s -duration 30s
+
+# Run comprehensive benchmarks
+go test -bench=. -benchmem ./internal/congestion/ | tee benchmark_results.txt
+```
+
+## Configuration Validation Script
+
+Create a test script to validate your L4S setup:
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "time"
+    
+    "github.com/quic-go/quic-go"
+    "github.com/quic-go/quic-go/internal/protocol"
+    "github.com/quic-go/quic-go/qlog"
+)
+
+func validateL4SConfig() error {
+    // Test 1: Valid L4S configuration
+    config := &quic.Config{
+        EnableL4S: true,
+        CongestionControlAlgorithm: protocol.CongestionControlPrague,
+    }
+    
+    if err := config.Validate(); err != nil {
+        return fmt.Errorf("valid L4S config failed validation: %v", err)
+    }
+    
+    // Test 2: Invalid L4S configuration should fail
+    invalidConfig := &quic.Config{
+        EnableL4S: true,
+        CongestionControlAlgorithm: protocol.CongestionControlRFC9002,
+    }
+    
+    if err := invalidConfig.Validate(); err == nil {
+        return fmt.Errorf("invalid L4S config passed validation")
+    }
+    
+    log.Println("L4S configuration validation passed")
+    return nil
+}
+```
+
+## Common Network Setup Issues
+
+### AQM Configuration
+
+**FQ-CoDel with L4S support:**
+```bash
+# Configure dual queue with L4S support
+tc qdisc add dev eth0 root fq_codel flows 1024 target 1ms interval 5ms ecn
+
+# Verify configuration
+tc qdisc show dev eth0
+```
+
+**PIE with ECN:**
+```bash
+# Enable PIE with ECN marking
+tc qdisc add dev eth0 root pie limit 1000 target 15ms ecn
+
+# Monitor PIE statistics
+tc -s qdisc show dev eth0
+```
+
+### Router Configuration
+
+**Enable ECN support:**
+```bash
+# Enable ECN in kernel
+echo 1 > /proc/sys/net/ipv4/tcp_ecn
+
+# For IPv6
+echo 1 > /proc/sys/net/ipv6/conf/all/use_tempaddr
+```
+
+## Known Limitations and Workarounds
+
+### Current Limitations
+
+1. **Limited AQM Support**: Not all network equipment supports L4S
+2. **ECN Compatibility**: Some middleboxes may strip ECN bits
+3. **Performance Overhead**: Small CPU overhead for ECN processing
+
+### Workarounds
+
+1. **Fallback Strategy**: Implement automatic fallback to RFC 9002
+```go
+config := &quic.Config{
+    EnableL4S: false,  // Fallback if L4S fails
+    CongestionControlAlgorithm: protocol.CongestionControlRFC9002,
+}
+```
+
+2. **Gradual Deployment**: Test L4S on specific connections first
+3. **Monitoring**: Implement comprehensive monitoring to detect issues
+
+## Performance Validation Checklist
+
+- [ ] Alpha parameter responds to congestion
+- [ ] ECN markings are received and processed
+- [ ] Latency improvements observed under load
+- [ ] Throughput comparable to RFC 9002
+- [ ] No memory leaks or excessive CPU usage
+- [ ] Proper fallback behavior when L4S unavailable
+
+## Getting Help
+
+If issues persist after following this guide:
+
+1. **Enable comprehensive logging** and collect detailed traces
+2. **Run performance benchmarks** to compare with RFC 9002
+3. **Check network infrastructure** for L4S compatibility
+4. **Review algorithm parameters** and consider tuning
+5. **File issues** with detailed logs and network configuration
+
+## Related Documentation
+
+- [Prague Algorithm Tuning Guide](prague-algorithm-tuning.md)
+- [L4S Configuration Examples](../example/l4s-config/README.md)
+- [IETF L4S Architecture Draft](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-l4s-arch/)
+
+---
+
+*This troubleshooting guide covers common L4S issues in quic-go. For implementation-specific questions, refer to the source code in `/internal/congestion/prague_sender.go` and related test files.*

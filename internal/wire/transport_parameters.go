@@ -554,7 +554,7 @@ func (p *TransportParameters) ValidForUpdate(saved *TransportParameters) bool {
 		p.MaxUniStreamNum >= saved.MaxUniStreamNum
 }
 
-// String returns a string representation, intended for logging.
+// String returns a string representation, intended for qlog.
 func (p *TransportParameters) String() string {
 	logString := "&wire.TransportParameters{OriginalDestinationConnectionID: %s, InitialSourceConnectionID: %s, "
 	logParams := []any{p.OriginalDestinationConnectionID, p.InitialSourceConnectionID}

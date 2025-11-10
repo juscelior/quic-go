@@ -16,6 +16,7 @@ In addition to these base RFCs, it also implements the following RFCs:
 * QUIC Version 2 ([RFC 9369](https://datatracker.ietf.org/doc/html/rfc9369))
 * QUIC Event Logging using qlog ([draft-ietf-quic-qlog-main-schema](https://datatracker.ietf.org/doc/draft-ietf-quic-qlog-main-schema/) and [draft-ietf-quic-qlog-quic-events](https://datatracker.ietf.org/doc/draft-ietf-quic-qlog-quic-events/))
 * QUIC Stream Resets with Partial Delivery ([draft-ietf-quic-reliable-stream-reset](https://datatracker.ietf.org/doc/html/draft-ietf-quic-reliable-stream-reset-07))
+* Low Latency, Low Loss, Scalable Throughput (L4S) with Prague congestion control ([draft-ietf-tsvwg-l4s-arch](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-l4s-arch/))
 
 Support for WebTransport over HTTP/3 ([draft-ietf-webtrans-http3](https://datatracker.ietf.org/doc/draft-ietf-webtrans-http3/)) is implemented in [webtransport-go](https://github.com/quic-go/webtransport-go).
 

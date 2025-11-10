@@ -19,7 +19,10 @@ func NewAckHandler(
 	pers protocol.Perspective,
 	qlogger qlogwriter.Recorder,
 	logger utils.Logger,
+	congestionControlAlgorithm protocol.CongestionControlAlgorithm,
+	enableL4S bool,
 ) (SentPacketHandler, ReceivedPacketHandler) {
-	sph := newSentPacketHandler(initialPacketNumber, initialMaxDatagramSize, rttStats, connStats, clientAddressValidated, enableECN, pers, qlogger, logger)
+
+	sph := newSentPacketHandler(initialPacketNumber, initialMaxDatagramSize, rttStats, connStats, clientAddressValidated, enableECN, pers, qlogger, logger, congestionControlAlgorithm, enableL4S)
 	return sph, newReceivedPacketHandler(sph, logger)
 }

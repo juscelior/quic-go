@@ -51,7 +51,30 @@ func validateConfig(config *Config) error {
 			return fmt.Errorf("invalid QUIC version: %s", v)
 		}
 	}
+	// validate L4S configuration
+	if config.EnableL4S && config.CongestionControlAlgorithm != protocol.CongestionControlPrague {
+		return fmt.Errorf("L4S can only be enabled when using Prague congestion control algorithm")
+	}
 	return nil
+}
+
+// getCongestionControlAlgorithm returns the congestion control algorithm to use.
+// If EnableL4S is true, it enforces Prague algorithm.
+// Otherwise, defaults to RFC9002 for compatibility.
+func getCongestionControlAlgorithm(config *Config) protocol.CongestionControlAlgorithm {
+	if config == nil {
+		return protocol.CongestionControlRFC9002
+	}
+	// If L4S is enabled, Prague must be used (validation ensures this)
+	if config.EnableL4S {
+		return protocol.CongestionControlPrague
+	}
+	// If explicitly set, use the configured algorithm
+	if config.CongestionControlAlgorithm == protocol.CongestionControlPrague {
+		return protocol.CongestionControlPrague
+	}
+	// Default to RFC9002 for compatibility
+	return protocol.CongestionControlRFC9002
 }
 
 // populateConfig populates fields in the quic.Config with their default values, if none are set
@@ -125,5 +148,7 @@ func populateConfig(config *Config) *Config {
 		EnableStreamResetPartialDelivery: config.EnableStreamResetPartialDelivery,
 		Allow0RTT:                        config.Allow0RTT,
 		Tracer:                           config.Tracer,
+		EnableL4S:                        config.EnableL4S,
+		CongestionControlAlgorithm:       getCongestionControlAlgorithm(config),
 	}
 }
