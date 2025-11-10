@@ -120,9 +120,9 @@ func TestECNFeedbackIntegration(t *testing.T) {
 	// ECN feedback might be 0 in localhost testing (no actual congestion/marking)
 	// This is expected behavior
 	if finalECNFeedback > 0 {
-		t.Logf("✅ ECN feedback detected - indicating ECN/ACK integration is active")
+		t.Logf("ECN feedback detected - indicating ECN/ACK integration is active")
 	} else {
-		t.Logf("ℹ️  No ECN feedback in localhost test - this is expected without actual network congestion")
+		t.Logf("No ECN feedback in localhost test - this is expected without actual network congestion")
 	}
 }
 
@@ -226,9 +226,9 @@ func TestECNMarkingAndACKProcessing(t *testing.T) {
 
 	// ECT(1) marking depends on L4S implementation - may or may not be present in localhost
 	if ect1Packets > 0 {
-		t.Logf("✅ ECT(1) marking detected - L4S ECN marking is working")
+		t.Logf("ECT(1) marking detected - L4S ECN marking is working")
 	} else {
-		t.Logf("ℹ️  No ECT(1) marking detected - this may be expected in localhost testing")
+		t.Logf("No ECT(1) marking detected - this may be expected in localhost testing")
 	}
 }
 
@@ -302,5 +302,5 @@ func TestECNFeedbackWithoutL4S(t *testing.T) {
 	// Without L4S, we should not see ECN feedback
 	finalCount := ecnFeedbackCount.Load()
 	require.Equal(t, int64(0), finalCount, "Expected no ECN feedback without L4S enabled")
-	t.Logf("✅ No ECN feedback without L4S - correct behavior")
+	t.Logf("No ECN feedback without L4S - correct behavior")
 }

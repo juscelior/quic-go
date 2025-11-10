@@ -131,7 +131,7 @@ func TestPragueVsRFC9002AlgorithmSwitching(t *testing.T) {
 			require.Equal(t, len(testData), n)
 			require.Equal(t, testData, receivedData[:n])
 
-			t.Logf("✅ Connection successful with %s server and %s client",
+			t.Logf("Connection successful with %s server and %s client",
 				algorithmName(tt.serverAlg), algorithmName(tt.clientAlg))
 		})
 	}
@@ -272,11 +272,11 @@ func TestAlgorithmConfigurationCombinations(t *testing.T) {
 				if server != nil {
 					server.Close()
 				}
-				t.Logf("✅ Valid configuration: %s", combo.name)
+				t.Logf("Valid configuration: %s", combo.name)
 			} else {
 				require.Error(t, err, "Expected invalid configuration to fail")
 				require.Contains(t, err.Error(), "L4S can only be enabled when using Prague congestion control")
-				t.Logf("✅ Invalid configuration correctly rejected: %s", combo.name)
+				t.Logf("Invalid configuration correctly rejected: %s", combo.name)
 			}
 		})
 	}

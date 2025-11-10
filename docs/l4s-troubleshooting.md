@@ -6,7 +6,7 @@ This guide helps diagnose and resolve common issues when using L4S (Low Latency,
 
 ## Quick Diagnosis Checklist
 
-### ✅ Basic Configuration Check
+### Basic Configuration Check
 
 1. **Verify L4S is enabled correctly:**
 ```go
@@ -157,13 +157,13 @@ func trackCongestionWindow(cwnd protocol.ByteCount) {
 
 **Error 1: Wrong Algorithm**
 ```go
-// ❌ WRONG - This will fail validation
+// WRONG - This will fail validation
 config := &quic.Config{
     EnableL4S: true,
     CongestionControlAlgorithm: protocol.CongestionControlRFC9002,
 }
 
-// ✅ CORRECT
+// CORRECT
 config := &quic.Config{
     EnableL4S: true,
     CongestionControlAlgorithm: protocol.CongestionControlPrague,
@@ -172,13 +172,13 @@ config := &quic.Config{
 
 **Error 2: Missing Algorithm Specification**
 ```go
-// ❌ WRONG - EnableL4S without specifying Prague
+// WRONG - EnableL4S without specifying Prague
 config := &quic.Config{
     EnableL4S: true,
     // Missing: CongestionControlAlgorithm
 }
 
-// ✅ CORRECT
+// CORRECT
 config := &quic.Config{
     EnableL4S: true,
     CongestionControlAlgorithm: protocol.CongestionControlPrague,
@@ -373,7 +373,7 @@ func validateL4SConfig() error {
         return fmt.Errorf("invalid L4S config passed validation")
     }
     
-    log.Println("✅ L4S configuration validation passed")
+    log.Println("L4S configuration validation passed")
     return nil
 }
 ```
